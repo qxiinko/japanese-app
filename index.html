@@ -2452,7 +2452,7 @@ function renderCourse(){
     }
   });
   html+='</div>';
-  html+=`<div class="card locked-note">Этапы 2–3: уроки 1–23 (12 сцен-диалогов), контрольные, лаборатория субтитров, импорт Anki, колода кандзи. Далее: PWA, облако.</div>`;
+
   $app.innerHTML=shell(html,'course');
   bindCourse();
 }
@@ -2602,6 +2602,7 @@ function renderExercise(ex){
      ${noVoice?`<div class="audio-note">Японский голос не найден в системе, звук не воспроизведётся. Задание показано в текстовом виде и <b>не засчитывается как аудирование</b> (установите японский голос TTS в системе или выберите его в настройках).</div><span class="q-jp">${renderFuri(ex.say)}</span>`
        :`<div class="row" style="justify-content:center;margin:14px 0"><button class="play-btn" id="play-btn">▶</button></div>
          <p class="muted" style="text-align:center">Слушайте и выбирайте перевод. Можно прослушать несколько раз.</p>`}
+     ${noVoice?'':'<button class="btn small ghost" id="listen-reveal" style="margin-top:8px">Не могу прослушать — показать текст</button><div id="listen-revealed" style="display:none"><span class="q-jp">${renderFuri(ex.say)}</span></div>'}
      <div class="opts" ${noVoice?'':'style="opacity:.45;pointer-events:none"'} id="listen-opts">
       ${ex.options.map((o,i)=>`<button class="opt" data-i="${i}">${renderFuri(o)}</button>`).join('')}</div>`;
   }
@@ -2635,6 +2636,13 @@ function renderExercise(ex){
           SESSION._audioPlayed=true;
         }else toast('Не удалось воспроизвести звук');
       };
+    const rv=document.getElementById('listen-reveal');
+    if(rv)rv.onclick=()=>{
+      document.getElementById('listen-revealed').style.display='block';
+      const o=document.getElementById('listen-opts');o.style.opacity='1';o.style.pointerEvents='auto';
+      SESSION._audioPlayed=false; /* увидел текст — задание не идёт в зачёт аудирования */
+      toast('Текст показан: это задание не будет засчитано как аудирование');
+    };
     SESSION._audioPlayed=false;
     function bindCheck(){
       document.getElementById('check-btn').onclick=()=>{
