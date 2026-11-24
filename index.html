@@ -255,7 +255,7 @@ function checkInput(user, accept){
    Карточка: {id, ef, ivl (дни), due (ms), n (серия), lapses, updatedAt} */
 const DAY=86400000, MIN=60000;
 function newCard(id){
-  return {id, ef:2.5, ivl:0, due:Date.now(), n:0, lapses:0, seen:0, correct:0, sched:SCHED_VERSION};
+  return {id, ef:2.5, ivl:0, due:null, n:0, lapses:0, seen:0, correct:0, sched:SCHED_VERSION, learned:false};
 }
 function schedule(card, grade, now){
   now=now||Date.now();
@@ -2230,9 +2230,29 @@ function nextLessonIndex(){
   return -1;
 }
 function lessonUnlocked(i){return i===0||(STATE.lessons[LESSONS[i-1].id]||{}).status==='done';}
+function migrateLearned(){
+  let changed=false;
+  const m=c=>{if(c&&c.learned===undefined){c.learned=true;if(c.due==null)c.due=Date.now();changed=true;}};
+  Object.values(STATE.cards).forEach(m);
+  Object.values(STATE.kanjiCards||{}).forEach(m);
+  if(changed)queueSave();
+  return changed;
+}
 function dueCards(){
   const now=Date.now();
-  return Object.values(STATE.cards).filter(c=>!c.suspended&&(c.due||0)<=now).sort((a,b)=>(a.due||0)-(b.due||0));
+  return Object.values(STATE.cards).filter(c=>!c.suspended&&c.learned!==false&&(c.due||0)<=now).sort((a,b)=>(a.due||0)-(b.due||0));
+}
+function poolNewWords(){
+  const out=[],seen=new Set();
+  for(let i=0;i<LESSONS.length;i++){
+    if(!lessonUnlocked(i))break;
+    for(const wid of LESSONS[i].words)if(!STATE.cards[wid]&&!seen.has(wid)){out.push({id:wid});seen.add(wid);}
+  }
+  for(const id of Object.keys(STATE.cards)){
+    const c=STATE.cards[id];
+    if(c&&c.learned===false&&!c.suspended&&!seen.has(id)){out.push({id});seen.add(id);}
+  }
+  return out;
 }
 function newCandidates(){
   const seen=new Set(Object.keys(STATE.cards));
@@ -2285,7 +2305,7 @@ function renderToday(){
    <h1>${ruH}! ${streak?`Серия: ${streak} 🔥`:'Начнём сегодня?'}</h1></div></div>
    <div class="stat-chips">
     <div class="stat"><b>${lvl}</b><span>уровень (опыт ${STATE.xp||0})</span></div>
-    <div class="stat"><b>${totalWords()}</b><span>слов в колоде</span></div>
+    <div class="stat"><b>${totalWords()}</b><span>слов в курсе</span></div>
     <div class="stat"><b>${stableWords()}</b><span>закреплено (интервал ≥ 21 дн.)</span></div>
     <div class="stat"><b>${due}</b><span>к повторению</span></div>
    </div>`;
@@ -2653,8 +2673,8 @@ function finishLesson(){
   $app.innerHTML=shell(`<div class="lesson-step"><div class="card" style="text-align:center">
    <h2>${passed?'Урок пройден!':'Почти получилось'}</h2>
    <p style="font-size:2rem;font-weight:800">${pct}%</p>
-   <p>${passed?'Порог перехода — 70%. Урок открыт, слова добавлены в колоду повторений.':'Порог перехода — 70%. Разберите ошибки и пройдите проверку ещё раз — это нормально.'}</p>
-   ${added?`<p class="muted">Новых слов в колоде: ${added}</p>`:''}
+   <p>${passed?'Порог перехода — 70%. Урок открыт, слова ждут в «Повторения → Изучить новые».':'Порог перехода — 70%. Разберите ошибки и пройдите проверку ещё раз — это нормально.'}</p>
+   ${added?`<p class="muted">Новых слов к изучению: ${added}</p>`:''}
    <p class="muted">${esc(L.canDo)}</p>
    <button class="btn big" data-go="today">На главный экран</button>
    ${passed?'':'<button class="btn ghost" id="retry" style="width:100%;margin-top:10px">Пройти задания снова</button>'}
@@ -2869,43 +2889,129 @@ function finishExam(){
 }
 
 /* ---------- Повторения (SRS) ---------- */
-function kanjiDeck(){return buildKanjiDeck(WORDS,STATE.cards);}
+function kanjiDeck(){
+  const dict={};
+  for(const id of Object.keys(WORDS))dict[id]=WORDS[id];
+  for(const id of Object.keys(STATE.cards||{})){
+    const c=STATE.cards[id];
+    if(c&&c.jp&&!WORDS[id]&&!id.startsWith('kz_')&&!id.startsWith('k_'))dict[id]={jp:c.jp,kana:c.kana||'',ru:c.ru||''};
+  }
+  return buildKanjiDeck(dict,STATE.cards);
+}
 function dueKanji(){
   const now=Date.now(),deck=kanjiDeck();
   return Object.keys(deck).map(id=>{
     const c=STATE.kanjiCards[id]||newCard(id);
     return {id,card:c,deck:deck[id]};
-  }).filter(x=>(x.card.due||0)<=now).sort((a,b)=>a.card.due-b.card.due);
+  }).filter(x=>x.card.learned!==false&&(x.card.due||0)<=now).sort((a,b)=>a.card.due-b.card.due);
+}
+function poolNewKanji(){
+  const deck=kanjiDeck();
+  return Object.keys(deck).filter(id=>{const c=STATE.kanjiCards[id];return !c||c.learned===false;});
 }
 function renderReviewHome(){
-  const due=dueCards().length,newN=Math.min(newCandidates().length,STATE.settings.newLimit);
-  const dueK=dueKanji().length,kanjiTotal=Object.keys(kanjiDeck()).length;
+  const due=dueCards().length;
+  const pool=poolNewWords();
+  const newN=Math.min(pool.length,STATE.settings.newLimit);
+  const learnedW=Object.values(STATE.cards).filter(c=>c.learned!==false&&!c.suspended).length;
   const wordsTotal=Object.keys(STATE.cards).length;
-  const wordsLearned=Object.values(STATE.cards).filter(c=>(c.ivl||0)>=21).length;
-  const kanjiStudied=Object.keys(STATE.kanjiCards||{}).length;
-  const kanjiLearned=Object.values(STATE.kanjiCards||{}).filter(c=>(c.ivl||0)>=21).length;
+  const wordsLearned=Object.values(STATE.cards).filter(c=>c.learned!==false&&(c.ivl||0)>=21).length;
+  const deck=kanjiDeck();
+  const dueK=dueKanji().length;
+  const poolK=poolNewKanji();
+  const newK=Math.min(poolK.length,STATE.settings.newLimit);
+  const kanjiTotal=Object.keys(deck).length;
+  const kanjiStudied=Object.keys(STATE.kanjiCards||{}).filter(id=>STATE.kanjiCards[id].learned!==false).length;
+  const kanjiLearned=Object.values(STATE.kanjiCards||{}).filter(c=>c.learned!==false&&(c.ivl||0)>=21).length;
   const html=`<div class="card"><h2>Повторения</h2>
-   <p class="muted">Планировщик: адаптированный SM-2 (${SCHED_VERSION}). Интервалы растут при успешных повторениях, ошибка возвращает карточку без штрафа.</p>
-   <p>Слова — к повторению: <b>${due}</b> · Новых: <b>${newN}</b> (лимит ${STATE.settings.newLimit}/день)</p>
-   <p class="muted">Всего слов в изучении: <b>${wordsTotal}</b> · закреплено (интервал ≥ 21 дн.): <b>${wordsLearned}</b></p>
-   <p>Кандзи — к повторению: <b>${dueK}</b> · всего знаков в курсе: <b>${kanjiTotal}</b></p>
-   <p class="muted">В изучении (открывались): <b>${kanjiStudied}</b> · закреплено: <b>${kanjiLearned}</b> — знаки извлекаются из слов уроков, карточка появляется при первом повторении/ошибке.</p>
-   ${due+newN>0?`<button class="btn big" id="go-review">Повторять слова</button>`:'<p class="muted">Слова: пока ничего не подошло по срокам.</p>'}
-   ${dueK>0?`<button class="btn big ghost" id="go-review-k" style="margin-top:8px">Повторять кандзи (${dueK})</button>`:`<p class="muted">Кандзи: подходят по срокам позже. Карточка кандзи — знак и слова с ним; чтение именно в этих словах.</p>`}
+   <p class="muted">Планировщик: адаптированный SM-2 (${SCHED_VERSION}). Как в Anki: новая карточка сначала изучается — только после этого попадает в повторения.</p>
+   <p><b>Слова</b> — изучено: <b>${learnedW}</b> из ${wordsTotal} в курсе · закреплено (≥21 дн.): <b>${wordsLearned}</b></p>
+   <p class="muted">По сроку: <b>${due}</b> · новых к изучению: <b>${pool.length}</b> (лимит ${STATE.settings.newLimit}/день)</p>
+   ${pool.length?`<button class="btn big" id="go-learn-w">Изучить новые слова (${newN})</button>`:''}
+   ${due?`<button class="btn big" id="go-review">Повторять слова — подошёл срок (${due})</button>`:''}
+   ${learnedW?`<button class="btn ghost" id="go-review-all">Повторять все изученные слова (${learnedW})</button>`:''}
+   <p style="margin-top:12px"><b>Кандзи</b> — в изучении: <b>${kanjiStudied}</b> из ${kanjiTotal} знаков курса · закреплено: <b>${kanjiLearned}</b></p>
+   <p class="muted">По сроку: <b>${dueK}</b> · новых к изучению: <b>${poolK.length}</b>. Знаки извлекаются из всех слов курса, включая импорт из Anki.</p>
+   ${poolK.length?`<button class="btn big ghost" id="go-learn-k">Изучить новые кандзи (${newK})</button>`:''}
+   ${dueK?`<button class="btn ghost" id="go-review-k">Повторять кандзи — подошёл срок (${dueK})</button>`:''}
+   ${kanjiStudied?`<button class="btn ghost" id="go-review-k-all">Повторять все изученные кандзи (${kanjiStudied})</button>`:''}
    <p class="muted">Оценки: «не помню» возвращает карточку в тот же сеанс, «легко» сильно увеличивает интервал.</p></div>`;
   $app.innerHTML=shell(html,'review');
-  const b=document.getElementById('go-review');
-  if(b)b.onclick=()=>startReview('words');
-  const bk=document.getElementById('go-review-k');
-  if(bk)bk.onclick=()=>startReview('kanji');
+  const bind=(id,fn)=>{const el=document.getElementById(id);if(el)el.onclick=fn;};
+  bind('go-learn-w',()=>startLearn('words'));
+  bind('go-learn-k',()=>startLearn('kanji'));
+  bind('go-review',()=>startReview('words','due'));
+  bind('go-review-all',()=>startReview('words','all'));
+  bind('go-review-k',()=>startReview('kanji','due'));
+  bind('go-review-k-all',()=>startReview('kanji','all'));
 }
-function startReview(){
-  const queue=dueCards().map(c=>({card:c,isNew:false}));
-  const newIds=newCandidates().slice(0,STATE.settings.newLimit);
-  for(const id of newIds)queue.push({card:STATE.cards[id]||newCard(id),isNew:true,id});
+function startReview(mode,scope){
+  scope=scope||'due';
+  let queue;
+  if(mode==='kanji'){
+    const deck=kanjiDeck();
+    const list=scope==='due'?dueKanji()
+      :Object.keys(STATE.kanjiCards||{}).filter(id=>STATE.kanjiCards[id].learned!==false&&!STATE.kanjiCards[id].suspended)
+        .map(id=>({id,card:STATE.kanjiCards[id]})).sort((a,b)=>(a.card.due||0)-(b.card.due||0));
+    queue=list.map(x=>({card:x.card,isNew:false,id:x.id}));
+  }else{
+    const list=scope==='due'?dueCards()
+      :Object.values(STATE.cards).filter(c=>c.learned!==false&&!c.suspended).sort((a,b)=>(a.due||0)-(b.due||0));
+    queue=list.map(c=>({card:c,isNew:false}));
+  }
   if(!queue.length){toast('Нечего повторять');go('review');return;}
-  SESSION={kind:'review',queue,i:0,requeue:0,reviewsDone:0};
+  SESSION={kind:'review',mode,queue,i:0,requeue:0,reviewsDone:0};
   renderReviewCard();
+}
+/* Изучение новых (как в Anki): новая карточка показывается целиком, после «Изучил» попадает в повторения */
+function startLearn(mode){
+  const pool=mode==='words'?poolNewWords():poolNewKanji();
+  if(!pool.length){toast('Новых карточек нет');go('review');return;}
+  SESSION={kind:'learn',mode,queue:pool.slice(0,STATE.settings.newLimit),i:0};
+  renderLearnCard();
+}
+function renderLearnCard(){
+  if(SESSION.i>=SESSION.queue.length){
+    const n=SESSION.queue.length;SESSION=null;
+    $app.innerHTML=shell(`<div class="lesson-step"><div class="card" style="text-align:center"><h2>Изучено!</h2><p>Карточек изучено: <b>${n}</b>. Они добавлены в повторения — дальше по срокам.</p><button class="btn big" data-go="review">К повторениям</button></div></div>`,'review');
+    $app.querySelector('[data-go="review"]').onclick=()=>go('review');return;
+  }
+  const item=SESSION.queue[SESSION.i],isK=SESSION.mode==='kanji';
+  let front,back;
+  if(isK){
+    const kd=kanjiDeck()[item.id]||{kanji:item.id.slice(3),words:[],count:0};
+    front=`<span class="q-jp">${esc(kd.kanji)}</span>`;
+    back=`<p class="muted">Встречается в ${kd.count} слов(е/ах) курса:</p>${(kd.words||[]).map(x=>`<p style="margin:6px 0"><span class="jp" style="font-size:1.15rem">${renderFuri(x.jp)} (${esc(x.kana)})</span> — ${esc(x.ru)}</p>`).join('')||'<p class="muted">Слова с этим знаком появятся из уроков или импорта.</p>'}`;
+  }else{
+    const c=STATE.cards[item.id]||{};
+    const we=wordEntryFor(WORDS,item.id);
+    const jp=c.jp||(we?we.jp:item.id),kana=c.kana||(we?we.kana:''),ru=c.ru||(we?we.ru:'');
+    front=`<span class="q-jp">${renderFuri(jp)}</span>`;
+    back=`<p style="font-size:1.25rem"><b>${esc(ru||'—')}</b></p>${kana?`<p class="muted jp">чтение: ${esc(kana)}</p>`:''}`;
+  }
+  $app.innerHTML=shell(`<div class="lesson-step">
+   <div class="spread"><span class="badge">Новое ${isK?'кандзи':'слово'} ${SESSION.i+1} из ${SESSION.queue.length}</span><button class="btn small ghost" id="quit-review">Закончить</button></div>
+   <div class="card srs-card" style="text-align:center">${front}<div id="srs-back" style="display:none">${back}</div>
+    <button class="btn big" id="reveal">Показать</button>
+    <button class="btn big" id="learned-btn" style="display:none">Изучил — в повторения</button>
+   </div></div>`,'review');
+  document.getElementById('quit-review').onclick=finishReview;
+  document.getElementById('reveal').onclick=()=>{
+    document.getElementById('reveal').style.display='none';
+    document.getElementById('srs-back').style.display='block';
+    document.getElementById('learned-btn').style.display='inline-block';
+  };
+  document.getElementById('learned-btn').onclick=()=>{
+    if(SESSION.mode==='kanji'){
+      STATE.kanjiCards=STATE.kanjiCards||{};
+      if(!STATE.kanjiCards[item.id])STATE.kanjiCards[item.id]=newCard(item.id);
+      STATE.kanjiCards[item.id].learned=true;STATE.kanjiCards[item.id].due=Date.now();
+    }else{
+      if(!STATE.cards[item.id])STATE.cards[item.id]=newCard(item.id);
+      STATE.cards[item.id].learned=true;STATE.cards[item.id].due=Date.now();
+    }
+    queueSave();SESSION.i++;renderLearnCard();
+  };
 }
 function renderReviewCard(){
   if(SESSION.i>=SESSION.queue.length){finishReview();return;}
@@ -3232,7 +3338,7 @@ function renderSettings(){
             const id=idForLab(jp);
             if(!STATE.cards[id]){
               STATE.cards[id]=newCard(id);
-              STATE.cards[id].jp=jp;
+              STATE.cards[id].jp=jp;STATE.cards[id].fromAnki=true;
               if(mapping.kana>=0)STATE.cards[id].kana=r[mapping.kana]||'';
               if(mapping.ru>=0)STATE.cards[id].ru=r[mapping.ru]||'';
               added++;
@@ -3296,6 +3402,7 @@ const KANA_READINGS={'ぬ':'ну','き':'ки','ろ':'ро','ほ':'хо','わ':'
   applySettings();
   render();               // сначала показываем интерфейс с состоянием по умолчанию
   await loadState();      // затем подгружаем сохранённый прогресс (с таймаутом)
+  migrateLearned();
   applySettings();
   render();
 })();
