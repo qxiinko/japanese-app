@@ -504,7 +504,15 @@ function parseAnkiExport(raw){
   let headerSkipped=false;
   while(lines.length&&/#separator|#html|#notetype|#deck|#columns/i.test(lines[0])){lines.shift();headerSkipped=true;}
   const rows=lines.map(l=>parseAnkiLine(l,delim)).filter(r=>r.some(f=>f!==''));
-  return {rows,delimiter:delim,headerSkipped};
+  /* Kaishi-подобные экспорты: первые 1–2 строки — информационные (содержат 'Kaishi'/'каиси' и много колонок с длинным текстом) */
+  let introSkipped=0;
+  while(rows.length){
+    const joined=rows[0].join(' ').toLowerCase();
+    const looksIntro=(rows[0].length>4)&&/(каиси|kaishi|добро пожаловать|welcome to)/.test(joined)&&(rows[0].some(f=>f.length>120)||joined.includes('каиси 1.5k'));
+    if(!looksIntro)break;
+    rows.shift();introSkipped++;
+  }
+  return {rows,delimiter:delim,headerSkipped,introSkipped};
 }
 function findDuplicates(rows,mapping,existingCards,wordsDict){
   const dup=[];
@@ -3598,13 +3606,17 @@ function renderSettings(){
       const pv=document.getElementById('anki-preview');
       if(!ank.rows.length){pv.innerHTML='<div class="audio-note">Не удалось найти строки с данными. Убедитесь, что экспорт был в «Простой текст».</div>';return;}
       const n=Math.max(...ank.rows.map(r=>r.length));
+      /* Автоопределение формата Kaishi: слово, чтение-кана, значение, русский перевод в колонках 0–3 */
+      const isKaishi=ank.rows.length>50&&ank.rows.every(r=>r.length>=4)&&/[\u3040-\u30ff]/.test(ank.rows[0][0]||'')&&/[\u3040-\u30ff]/.test(ank.rows[0][1]||'')&&/[а-яА-Я]/.test(ank.rows[0][3]||'');
+      const ka=(isKaishi)?{jp:0,kana:1,ru:3}:null;
+      if(ka)pv.innerHTML=`<div class="audio-note">Распознан формат <b>Kaishi 1.5k</b>: колонки 1/2/4 (слово, чтение, русский перевод) подставлены автоматически — проверьте и жмите «Проверить дубликаты».</div>`;
       const colOpts=sel=>['<option value="-1">— не использовать —</option>'].concat(Array.from({length:n},(_,i)=>`<option value="${i}" ${i===sel?'selected':''}>колонка ${i+1}${ank.rows[0][i]?': '+esc(ank.rows[0][i].slice(0,20)):''}</option>`)).join('');
       const def=j=>j<n?j:Math.min(j,n-1);
-      pv.innerHTML=`<p class="muted">Найдено строк: <b>${ank.rows.length}</b>, разделитель: ${ank.delimiter==='\t'?'табуляция':';'}.</p>
-       <div class="field"><label>Колонка «Японское слово»</label><select id="ak-jp">${colOpts(def(0))}</select></div>
-       <div class="field"><label>Колонка «Чтение (кана)»</label><select id="ak-kana">${colOpts(def(1))}</select></div>
-       <div class="field"><label>Колонка «Значение (рус.)»</label><select id="ak-ru">${colOpts(def(2))}</select></div>
-       <div class="row"><button class="btn" id="ak-scan">Проверить дубликаты</button></div><div id="ak-result"></div>`;
+      pv.innerHTML+=(`<p class="muted">Найдено строк: <b>${ank.rows.length}</b>, разделитель: ${ank.delimiter==='\t'?'табуляция':';'}.</p>
+       <div class="field"><label>Колонка «Японское слово»</label><select id="ak-jp">${colOpts(ka?ka.jp:def(0))}</select></div>
+       <div class="field"><label>Колонка «Чтение (кана)»</label><select id="ak-kana">${colOpts(ka?ka.kana:def(1))}</select></div>
+       <div class="field"><label>Колонка «Значение (рус.)»</label><select id="ak-ru">${colOpts(ka?ka.ru:def(2))}</select></div>
+       <div class="row"><button class="btn" id="ak-scan">Проверить дубликаты</button></div><div id="ak-result"></div>`);
       document.getElementById('ak-scan').onclick=()=>{
         const mapping={jp:+document.getElementById('ak-jp').value,kana:+document.getElementById('ak-kana').value,ru:+document.getElementById('ak-ru').value};
         if(mapping.jp<0){toast('Выберите колонку японского слова');return;}
@@ -3619,7 +3631,7 @@ function renderSettings(){
           let added=0;
           ank.rows.forEach((r,i)=>{
             if(dupRows.has(i))return;
-            const jp=r[mapping.jp];if(!jp)return;
+            const jp=(r[mapping.jp]||'').replace(/\[[^\]]*\]/g,'').trim();if(!jp)return;
             const id=idForLab(jp);
             if(!STATE.cards[id]){
               STATE.cards[id]=newCard(id);
