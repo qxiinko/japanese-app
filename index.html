@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#3f5e8c">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>Японский: путь к аниме</title>
 <style>
 /* Японский: путь к аниме — стили. Палитра: тёплая бумага + индиго (藍) + киноварь (朱) в качестве акцента-печати. */
@@ -3190,6 +3194,11 @@ const KANA_READINGS={'ぬ':'ну','き':'ки','ろ':'ро','ほ':'хо','わ':'
   applySettings();
   render();
 })();
+
+/* PWA: регистрация service worker (только https/localhost, не file://) */
+if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost')){
+ addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').catch(()=>{});});
+}
 
 </script>
 <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","spa":2}' crossorigin="anonymous"></script>
