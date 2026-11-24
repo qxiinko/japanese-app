@@ -3054,49 +3054,48 @@ async function cloudEnsureToken(){
 }
 function cloudBind(){
   const $=id=>document.getElementById(id);
-  const cfgInput=$('cloud-url'),keyInput=$('cloud-key');
-  $('cloud-save-cfg').onclick=()=>{
-    const url=(cfgInput.value||'').trim().replace(/\/+$/,''),key=(keyInput.value||'').trim();
+  const on=(id,fn)=>{const el=$(id);if(el)el.onclick=fn;};
+  on('cloud-save-cfg',()=>{
+    const url=($('cloud-url')?.value||'').trim().replace(/\/+$/,''),key=($('cloud-key')?.value||'').trim();
     if(!/^https:\/\/.+\.supabase\.co/.test(url)||!key){toast('Нужны URL вида https://xxx.supabase.co и ключ sb_publishable_…');return;}
     STATE.settings.cloud={url,key};queueSave();toast('Сохранено');renderSettings();
-  };
-  const reg=$('cloud-signup'),log=$('cloud-login'),out=$('cloud-logout'),up=$('cloud-up'),down=$('cloud-down');
-  if(reg)reg.onclick=async()=>{
+  });
+  on('cloud-signup',async()=>{
     try{
-      const j=await cloudApi('/auth/v1/signup',{method:'POST',body:JSON.stringify({email:$('cloud-email').value.trim(),password:$('cloud-pass').value})});
+      const j=await cloudApi('/auth/v1/signup',{method:'POST',body:JSON.stringify({email:($('cloud-email')?.value||'').trim(),password:($('cloud-pass')?.value||'')})});
       if(!j.access_token){toast('Проверьте почту: пришло письмо подтверждения (или выключите Confirm email в Supabase)');return;}
       STATE.settings.cloudSession={access_token:j.access_token,refresh_token:j.refresh_token,uid:j.user.id,email:j.user.email,expires_at:Math.floor(Date.now()/1000)+j.expires_in};
       queueSave();toast('Аккаунт создан, вы вошли');renderSettings();
     }catch(e){toast('Ошибка: '+e.message);}
-  };
-  if(log)log.onclick=async()=>{
+  });
+  on('cloud-login',async()=>{
     try{
-      const j=await cloudApi('/auth/v1/token?grant_type=password',{method:'POST',body:JSON.stringify({email:$('cloud-email').value.trim(),password:$('cloud-pass').value})});
+      const j=await cloudApi('/auth/v1/token?grant_type=password',{method:'POST',body:JSON.stringify({email:($('cloud-email')?.value||'').trim(),password:($('cloud-pass')?.value||'')})});
       STATE.settings.cloudSession={access_token:j.access_token,refresh_token:j.refresh_token,uid:j.user.id,email:j.user.email,expires_at:Math.floor(Date.now()/1000)+j.expires_in};
       queueSave();toast('Вошли: '+j.user.email);renderSettings();
     }catch(e){toast('Ошибка: '+e.message);}
-  };
-  if(out)out.onclick=()=>{delete STATE.settings.cloudSession;queueSave();toast('Вышли из облака');renderSettings();};
-  if(up)up.onclick=async()=>{
+  });
+  on('cloud-logout',()=>{delete STATE.settings.cloudSession;queueSave();toast('Вышли из облака');renderSettings();});
+  on('cloud-up',async()=>{
     try{
       const ss=await cloudEnsureToken();if(!ss)return;
       await cloudApi('/rest/v1/progress?on_conflict=id',{method:'POST',headers:{'Authorization':'Bearer '+ss.access_token,'Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify([{id:ss.uid,data:cloudStrip()}])});
       STATE.settings.cloudLastSync=new Date().toISOString();queueSave();toast('Прогресс залит в облако ✓');renderSettings();
     }catch(e){toast('Ошибка: '+e.message);}
-  };
-  if(down)down.onclick=async()=>{
+  });
+  on('cloud-down',async()=>{
     try{
       const ss=await cloudEnsureToken();if(!ss)return;
       const rows=await cloudApi('/rest/v1/progress?id=eq.'+ss.uid+'&select=data,updated_at',{headers:{'Authorization':'Bearer '+ss.access_token}});
       if(!rows.length){toast('В облаке пока пусто — сначала залейте прогресс');return;}
-      const cloudDate=new Date(rows[0].updated_at),localDate=STATE.settings.cloudLastSync?new Date(STATE.settings.cloudLastSync):null;
+      const cloudDate=new Date(rows[0].updated_at);
       if(!confirm('Заменить локальный прогресс облачным (от '+cloudDate.toLocaleString('ru-RU')+')? Локальные изменения после последней синхронизации будут потеряны.'))return;
       const sess=STATE.settings.cloudSession,cfg=STATE.settings.cloud,last=STATE.settings.cloudLastSync;
       STATE=rows[0].data;
       STATE.settings=STATE.settings||{};STATE.settings.cloud=cfg;STATE.settings.cloudSession=sess;STATE.settings.cloudLastSync=last;
       await persistState();applySettings();toast('Прогресс загружен из облака ✓');go('today');
     }catch(e){toast('Ошибка: '+e.message);}
-  };
+  });
 }
 
 function renderSettings(){
@@ -3236,9 +3235,8 @@ function renderSettings(){
     if(confirm('Удалить весь локальный прогресс? Это необратимо. Сначала можно сделать экспорт.')){
       STATE=defaultState();queueSave();render();toast('Прогресс сброшен');
     }
-  };
+  };  cloudBind();
 }
-  cloudBind();
 function exportProgress(){
   const data=JSON.stringify({app:'jp-anime-path',version:STATE_VERSION,exported_at:new Date().toISOString(),state:STATE},null,1);
   const blob=new Blob([data],{type:'application/json'});
