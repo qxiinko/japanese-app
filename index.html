@@ -2375,6 +2375,7 @@ function renderDiag(){
   const it=DIAG.items[SESSION.i];
   const isType=it.kind==='hira-type'||it.kind==='kata-type';
   const html=`<div class="lesson-step">
+   <div class="spread"><span class="badge">Вопрос ${SESSION.i+1} из ${DIAG.items.length}</span><button class="btn small ghost" id="quit-diag">Прервать</button></div>
    <div class="progress-bar"><div style="width:${(SESSION.i/DIAG.items.length)*100}%"></div></div>
    <div class="card"><span class="badge">${it.kind.startsWith('kata')?'катакана':'хирагана'}</span>
     <p class="q-prompt">${it.q}</p><span class="q-jp">${esc(it.jp)}</span>
@@ -2385,6 +2386,7 @@ function renderDiag(){
       :`<div class="opts">${it.options.map((o,i)=>`<button class="opt" data-i="${i}">${esc(o)}</button>`).join('')}</div>`}
    </div></div>`;
   $app.innerHTML=shell(html,null);
+  document.getElementById('quit-diag').onclick=()=>{if(confirm('Прервать диагностику? Результат не сохранится.')){SESSION=null;go('course');}};
   if(isType){
     const inp=document.getElementById('diag-input');inp.focus();
     const check=()=>{
@@ -2511,6 +2513,7 @@ function renderExercise(ex){
   const headBadge=isExam?`<span class="badge">Контрольная: задание ${SESSION.exIdx+1} из ${list.length}</span>
     <button class="btn small ghost" id="quit-exam">Прервать</button>`
    :`<span class="badge">Задание ${SESSION.exIdx+1} из ${list.length}</span>
+    <button class="btn small ghost" id="quit-lesson-ex">Прервать</button>
     <button class="btn small ghost" data-action="report">Сообщить об ошибке в задании</button>`;
   $app.innerHTML=shell(`<div class="lesson-step">
    <div class="spread">${headBadge}</div>
@@ -2520,6 +2523,8 @@ function renderExercise(ex){
    <div id="fb-slot"></div>
   </div>`,null);
   if(isExam)$app.querySelector('#quit-exam').onclick=()=>{SESSION=null;go('course');};
+  const qex=$app.querySelector('#quit-lesson-ex');
+  if(qex)qex.onclick=()=>{if(confirm('Прервать урок? Прогресс этого урока не сохранится.')){SESSION=null;go('course');}};
   const checkBtnHtml=()=>`<button class="btn big" id="check-btn">Проверить</button>`;
   if(ex.type==='choice'||ex.type==='listen'){
     let sel=null;
