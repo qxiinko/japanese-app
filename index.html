@@ -2216,6 +2216,9 @@ function initVoices(){
       : '<option value="">— японские голоса не найдены —</option>';
   }
   updateVoiceWarning();
+  /* Диагностика: если японских нет — показать, что реально установлено */
+  const dbg=document.getElementById('voice-debug');
+  if(dbg)dbg.innerHTML=(!VOICES.length&&all.length)?'<p class="muted">В системе голоса есть, но японского среди них нет. Установлено: '+all.map(v=>esc(v.name)+' ('+esc(v.lang)+')').slice(0,8).join(', ')+'.</p>':(!all.length?'<p class="muted">Браузер не вернул ни одного системного голоса (getVoices пуст). Перезагрузите страницу полностью.</p>':'');
 }
 function updateVoiceWarning(){
   const w=document.getElementById('voice-warning');
@@ -3529,6 +3532,7 @@ function renderSettings(){
    <div class="audio-note" id="voice-warning" style="display:${hasJaVoice()?'none':'block'}">Японский голос не найден. Установите японский голос синтеза речи в системе (Android: Настройки → Язык и ввод → Синтез речи; Windows: Параметры → Время и язык → Речь) и перезагрузите страницу. Без голоса аудирование не засчитывается, но весь текст остаётся доступным.</div>
    <div class="field"><label>Голос</label><select id="voice-select"></select></div>
    <button class="btn small ghost" id="test-voice">Проверить голос</button>
+   <div id="voice-debug"></div>
   </div>
   <div class="card"><h3>Резервная копия прогресса</h3>
    <p class="muted">Прогресс хранится локально в этом браузере и привязан к адресу страницы. Экспортируйте файл, чтобы перенести прогресс на другое устройство (это ручной перенос, а не автоматическая синхронизация). Импорт объединяет данные без удаления истории: по каждой карточке берётся более новая запись.</p>
