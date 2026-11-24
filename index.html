@@ -228,6 +228,8 @@ html[data-theme="dark"][data-accent="ai"]{--accent:#b39ddb;--accent-ink:#1d1430;
 .ai-pre{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px;overflow-x:auto;font-family:var(--font-jp);font-size:.95rem}
 .ai-ul{margin:6px 0;padding-left:20px}
 .ai-h{font-size:1.05rem}
+.kana-cell.kana-sel{border:2.5px solid var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 25%,transparent)}
+.kana-cell{cursor:pointer}
 
 </style>
 </head>
@@ -2980,9 +2982,12 @@ function renderKana(){
   const which=SCREEN.params&&SCREEN.params.k||'hira';
   const tbl=KANA[which];
   const probs=Object.keys(kanaStats()).filter(j=>kanaProblem(j)).length;
+  STATE.kanaSel=STATE.kanaSel||{};
+  const selN=tbl.filter(r=>STATE.kanaSel[r[0]]).length;
   const cells=tbl.map(([jp,rom])=>{
     const p=kanaProblem(jp);
-    return '<div class="kana-cell '+(p?'kana-bad':'')+'"><span class="jp kana-jp">'+jp+'</span><span class="kana-rom">'+rom+'</span></div>';
+    const sel=STATE.kanaSel[jp]?' kana-sel':'';
+    return '<div class="kana-cell'+(p?' kana-bad':'')+sel+'" data-kana="'+jp+'" role="button" tabindex="0"><span class="jp kana-jp">'+jp+'</span><span class="kana-rom">'+rom+'</span></div>';
   }).join('');
   const html='<div class="card">'+
    '<div class="kana-head"><h2>Кана</h2>'+
@@ -2990,197 +2995,103 @@ function renderKana(){
      '<button class="'+(which==='hira'?'on':'')+'" id="k-hira">ひらがな Хирагана</button>'+
      '<button class="'+(which==='kata'?'on':'')+'" id="k-kata">カタカナ Катакана</button>'+
     '</div></div>'+
-   '<p class="muted">Проблемных знаков: <b>'+probs+'</b> (подсвечены и выпадают в проверках чаще — по вашим ответам).</p>'+
+   '<p class="muted">Кликайте на знаки, чтобы выбрать набор для проверки (или «Все знаки»). Проблемные (<b>'+probs+'</b>) подсвечены красным — они выпадают чаще.</p>'+
    '<div class="kana-grid">'+cells+'</div>'+
    '<div class="row" style="margin-top:14px">'+
-    '<button class="btn big kana-learn" id="k-quiz-h">Проверка хираганы</button>'+
-    '<button class="btn big kana-learn ghost" id="k-quiz-k">Проверка катаканы</button>'+
-    '<button class="btn kana-learn ghost" id="k-quiz-all">Всё вместе</button>'+
+    '<button class="btn big kana-learn" id="k-quiz-sel">'+(selN?'Проверить выбранное ('+selN+')':'Проверить все ('+tbl.length+')')+'</button>'+
+    '<button class="btn big kana-learn ghost" id="k-quiz-mix">Всё вместе: обе азбуки</button>'+
+   '</div>'+
+   '<div class="row" style="margin-top:6px">'+
+    '<button class="btn ghost" id="k-sel-all">Выбрать все</button>'+
+    '<button class="btn ghost" id="k-sel-none">Снять выбор</button>'+
    '</div></div>';
   $app.innerHTML=shell(html,'kana');
   document.getElementById('k-hira').onclick=()=>{SCREEN={name:'kana',params:{k:'hira'}};render();};
   document.getElementById('k-kata').onclick=()=>{SCREEN={name:'kana',params:{k:'kata'}};render();};
-  document.getElementById('k-quiz-h').onclick=()=>startKanaQuiz([['hira',10]]);
-  document.getElementById('k-quiz-k').onclick=()=>startKanaQuiz([['kata',10]]);
-  document.getElementById('k-quiz-all').onclick=()=>startKanaQuiz([['hira',8],['kata',7]]);
+  $app.querySelectorAll('[data-kana]').forEach(el=>el.onclick=()=>{kanaToggleSel(el.dataset.kana);el.classList.toggle('kana-sel');
+    const n=KANA[which].filter(r=>STATE.kanaSel[r[0]]).length;
+    document.getElementById('k-quiz-sel').textContent=n?'Проверить выбранное ('+n+')':'Проверить все ('+KANA[which].length+')';});
+  document.getElementById('k-sel-all').onclick=()=>{KANA[which].forEach(r=>STATE.kanaSel[r[0]]=1);queueSave();render();};
+  document.getElementById('k-sel-none').onclick=()=>{KANA[which].forEach(r=>delete STATE.kanaSel[r[0]]);queueSave();render();};
+  document.getElementById('k-quiz-sel').onclick=()=>startKanaQuiz(kanaSelRows(which),(which==='hira'?'Хирагана':'Катакана'));
+  document.getElementById('k-quiz-mix').onclick=()=>{
+    const sel=STATE.kanaSel||{};
+    const chosen=KANA.hira.filter(r=>sel[r[0]]).concat(KANA.kata.filter(r=>sel[r[0]]));
+    const rows=chosen.length?chosen:KANA.hira.concat(KANA.kata);
+    startKanaQuiz(rows,'Хирагана + Катакана');
+  };
 }
-function kanaPick(list,n){
-  const st=kanaStats();
-  const weighted=[];
-  for(const row of list){
-    const p=kanaProblem(row[0]);
-    const w=p?3:1;
-    for(let i=0;i<w;i++)weighted.push(row);
-  }
-  const out=[],used=new Set();
-  while(out.length<Math.min(n,list.length)){
-    const row=weighted[Math.floor(Math.random()*weighted.length)];
-    if(!used.has(row[0])){used.add(row[0]);out.push(row);}
-  }
-  return out;
-}
-function startKanaQuiz(parts){
-  const quiz=[];
-  for(const [k,n] of parts)for(const row of kanaPick(KANA[k],n))quiz.push({jp:row[0],rom:row[1],alts:row[2]||[]});
-  SESSION={kind:'kana-quiz',quiz,i:0,ok:0};
+function startKanaQuiz(rows,title){
+  /* rows: массив [jp,rom,alts] выбранных знаков; как в Tofugu:
+     ошибка НЕ раскрывает ответ — пытаемся снова; результаты — с числом ошибок по знаку */
+  if(!rows.length){toast('Не выбрано ни одного знака');return;}
+  const pool=rows.slice();
+  for(let i=pool.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
+  SESSION={kind:'kana-quiz',pool,title,i:0,ok:0,miss:[],cur:null};
   renderKanaQuiz();
 }
 function renderKanaQuiz(){
-  if(SESSION.i>=SESSION.quiz.length){
-    const ok=SESSION.ok,n=SESSION.quiz.length;SESSION=null;go('kana');
-    toast('Проверка завершена: '+ok+' из '+n+' верно');
+  const Q=SESSION;
+  if(Q.i>=Q.pool.length){
+    const miss=Q.miss.slice().sort((a,b)=>b.n-a.n);
+    const acc=Q.pool.length?Math.round(Q.ok/Q.pool.length*100):0;
+    SESSION=null;SCREEN={name:'kana',params:{k:KANA.hira.some(r=>r[0]===miss[0]&&miss[0])?'hira':'kana'}};SCREEN.params={k:KANA.hira.some(r=>r[0][0]===(miss[0]&&miss[0][0]))?'hira':'kata'};
+    const missHtml=miss.length?miss.map(m=>`<span class="kana-cell kana-bad" style="display:inline-flex;width:auto;padding:6px 10px;margin:4px"><span class="jp kana-jp">${m.jp}</span><span class="kana-rom">${m.rom} ×${m.n}</span></span>`).join(''):'<p class="muted">Ошибок нет — идеально!</p>';
+    $app.innerHTML=shell(`<div class="lesson-step"><div class="card" style="text-align:center">
+     <h2>${Q.title}: результат</h2><p style="font-size:2rem;font-weight:800">${acc}%</p>
+     <p>Верно с первой попытки: <b>${Q.ok}</b> из ${Q.pool.length}</p>
+     <p class="muted" style="margin-top:8px">Знаки, где были ошибки (с числом неудачных попыток):</p>
+     <div style="margin:8px 0">${missHtml}</div>
+     <button class="btn big" data-go="kana">К таблице каны</button>
+     <button class="btn ghost" id="kq-again" style="width:100%;margin-top:8px">Пройти снова</button>
+    </div></div>`,null);
+    $app.querySelector('[data-go="kana"]').onclick=()=>go('kana');
+    document.getElementById('kq-again').onclick=()=>startKanaQuiz(Q.pool.map(r=>[r[0],r[1],r[2]]),Q.title);
     return;
   }
-  const it=SESSION.quiz[SESSION.i];
+  const row=Q.pool[Q.i];
+  Q.cur={jp:row[0],rom:row[1],alts:row[2]||[],tries:0};
   const html=`<div class="lesson-step">
-   <div class="spread"><span class="badge">Знак ${SESSION.i+1} из ${SESSION.quiz.length}</span><button class="btn small ghost" data-quit="kana">Закончить</button></div>
-   <div class="progress-bar"><div style="width:${(SESSION.i/SESSION.quiz.length)*100}%"></div></div>
-   <div class="card" style="text-align:center"><span class="q-jp" style="font-size:4rem">${it.jp}</span>
-    <input class="type-in" id="kq-in" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="чтение латиницей, например: ka" style="max-width:280px;margin:12px auto">
-    <div id="kq-fb"></div><button class="btn big" id="kq-check">Проверить</button>
+   <div class="spread"><span class="badge">${Q.title}: знак ${Q.i+1} из ${Q.pool.length} · ошибок: ${Q.cur.tries}</span><button class="btn small ghost" data-quit="kana">Закончить</button></div>
+   <div class="progress-bar"><div style="width:${(Q.i/Q.pool.length)*100}%"></div></div>
+   <div class="card" style="text-align:center"><span class="q-jp" style="font-size:5rem">${row[0]}</span>
+    <input class="type-in" id="kq-in" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="чтение латиницей" style="max-width:300px;margin:14px auto">
+    <div id="kq-fb"></div><button class="btn big" id="kq-check">Ответить</button>
    </div></div>`;
   $app.innerHTML=shell(html,null);
   const inp=document.getElementById('kq-in');inp.focus();
-  const st=kanaStats();st[it.jp]=st[it.jp]||{a:0,o:0};
   const check=()=>{
     const val=inp.value.trim().toLowerCase();
     if(!val)return;
-    st[it.jp].a++;
-    const good=val===it.rom||it.alts.includes(val);
-    if(good){st[it.jp].o++;SESSION.ok++;SESSION.i++;queueSave();renderKanaQuiz();return;}
-    queueSave();
-    document.getElementById('kq-fb').innerHTML=`<div class="feedback bad"><b>Неверно.</b> Правильное чтение: <b>${esc(it.rom)}</b></div>`;
-    document.getElementById('kq-check').textContent='Дальше →';
-    document.getElementById('kq-check').onclick=()=>{SESSION.i++;renderKanaQuiz();};
-    inp.disabled=true;
+    const good=val===Q.cur.rom||Q.cur.alts.includes(val);
+    if(good){
+      if(Q.cur.tries===0)Q.ok++;
+      const st=kanaStats();st[Q.cur.jp]=st[Q.cur.jp]||{a:0,o:0};
+      st[Q.cur.jp].a++;if(Q.cur.tries===0)st[Q.cur.jp].o++;
+      queueSave();
+      Q.i++;renderKanaQuiz();return;
+    }
+    Q.cur.tries++;
+    const mi=Q.miss.find(x=>x.jp===Q.cur.jp);
+    if(mi)mi.n++;else Q.miss.push({jp:Q.cur.jp,rom:Q.cur.rom,n:1});
+    /* Tofugu-механика: ответ не раскрываем — «попробуй ещё», подсказка: первая буква после 2 ошибок */
+    document.getElementById('kq-fb').innerHTML=`<div class="feedback bad">${Q.cur.tries>=2?'Подсказка: начинается на «<b>'+Q.cur.rom[0]+'</b>»…':'Не то. Смотри на знак и вспоминай.'}</div>`;
+    inp.value='';inp.focus();
+    document.querySelector('.spread .badge').textContent=Q.title+': знак '+(Q.i+1)+' из '+Q.pool.length+' · ошибок: '+Q.cur.tries;
   };
   document.getElementById('kq-check').onclick=check;
   inp.addEventListener('keydown',e=>{if(e.key==='Enter')check();});
 }
-
-
-
-/* Мини-рендер Markdown для ответов помощника: **жирный**, *курсив*, ### заголовки, списки, код */
-function mdRender(src){
-  const esc=(t)=>String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const lines=String(src).split(/\r?\n/);const out=[];let inList=false,inCode=false;
-  const inline=(t)=>esc(t)
-    .replace(/`([^`]+)`/g,'<code class="ai-code">$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>')
-    .replace(/(^|[^*])\*([^*\n]+)\*/g,'$1<i>$2</i>');
-  for(const raw of lines){
-    const line=raw;
-    if(/^```/.test(line.trim())){if(inCode){out.push('</pre>');inCode=false;}else{if(inList){out.push('</ul>');inList=false;}out.push('<pre class="ai-pre">');inCode=true;}continue;}
-    if(inCode){out.push(esc(raw));continue;}
-    const h=line.match(/^(#{1,4})\s+(.*)/);
-    if(h){if(inList){out.push('</ul>');inList=false;}out.push('<b class="ai-h">'+inline(h[2])+'</b>');continue;}
-    const li=line.match(/^\s*(?:[-*•]|\d+[.)])\s+(.*)/);
-    if(li){if(!inList){out.push('<ul class="ai-ul">');inList=true;}out.push('<li>'+inline(li[1])+'</li>');continue;}
-    if(inList){out.push('</ul>');inList=false;}
-    if(!line.trim()){out.push('<br>');continue;}
-    out.push(inline(line));
-  }
-  if(inList)out.push('</ul>');
-  if(inCode)out.push('</pre>');
-  return out.join('\n');
+/* Выбор знаков для квиза (Tofugu-стиль): ячейки таблицы кликабельны */
+function kanaToggleSel(jp){
+  STATE.kanaSel=STATE.kanaSel||{};
+  if(STATE.kanaSel[jp])delete STATE.kanaSel[jp];else STATE.kanaSel[jp]=1;
+  queueSave();
 }
-
-/* ---------- Помощник (LLM через OpenAI-совместимый API) ---------- */
-function aiCfg(){return STATE.settings.ai||{};}
-const AI_PRESETS=[
- ['OpenRouter','https://openrouter.ai/api/v1','openrouter/free'],
- ['VseGPT','https://api.vsegpt.ru/v1','openchat/openchat-7b'],
- ['ProxyAPI','https://api.proxyapi.ru/openai/v1','gpt-4o-mini'],
- ['Gemini (OpenAI-совместимый)','https://generativelanguage.googleapis.com/v1beta/openai','gemini-2.0-flash']
-];
-function renderAI(){
-  const cfg=aiCfg();
-  const ready=cfg.key&&cfg.url;
-  const weak=Object.values(STATE.cards).filter(c=>c.learned!==false&&!c.suspended&&c.seen>0&&(c.correct||0)<(c.seen||1)*0.7).slice(0,15).map(c=>wordEntryFor(WORDS,c.id)?wordEntryFor(WORDS,c.id).jp:(c.jp||c.id));
-  const html=`<div class="card"><h2>Помощник</h2>
-   ${ready
-     ?`<div id="ai-chat" class="ai-chat"><div class="muted">Спросите что угодно о японском: грамматика, частица, фраза из аниме. «Объясни урок 5» — объяснит материал вашего урока.</div></div>
-       <div class="row" style="margin-top:8px"><input id="ai-in" class="type-in" style="flex:1" placeholder="Ваш вопрос…"><button class="btn" id="ai-send">Отправить</button></div>
-       <div class="row" style="margin-top:8px;flex-wrap:wrap">
-        <button class="btn small ghost" id="ai-task">Персональное задание по моим слабым словам</button>
-        <button class="btn small ghost" id="ai-parse">Разобрать фрагмент аниме</button>
-        <button class="btn small ghost" id="ai-clear">Очистить историю</button>
-        <button class="btn small ghost" id="ai-cfg-btn">Настройки модели</button>
-       </div>
-       <div class="field" style="margin-top:8px"><label>Модель</label><select id="ai-model-sel">
-        <option value="openrouter/free" ${(cfg.model||'')==='openrouter/free'?'selected':''}>openrouter/free — автороутер, стабильно</option>
-        <option value="nvidia/nemotron-3-ultra-550b-a55b:free" ${(cfg.model||'')==='nvidia/nemotron-3-ultra-550b-a55b:free'?'selected':''}>nvidia/nemotron-3-ultra — умнее, лимитнее</option>
-       </select></div><div id="ai-parse-box"></div>`
-     :`<p class="muted">Помощник работает через любой OpenAI-совместимый API (OpenRouter, VseGPT, ProxyAPI…). Ключ хранится только в вашем браузере.</p>
-       <div class="field"><label>Провайдер</label><select id="ai-preset">${AI_PRESETS.map((p,i)=>`<option value="${i}">${p[0]}</option>`).join('')}</select></div>
-       <div class="field"><label>Адрес API</label><input id="ai-url" placeholder="https://openrouter.ai/api/v1"></div>
-       <div class="field"><label>Ключ API</label><input id="ai-key" type="password" placeholder="sk-…"></div>
-       <div class="field"><label>Модель</label><input id="ai-model" placeholder="openrouter/auto"></div>
-       <button class="btn" id="ai-save">Сохранить</button>
-       <p class="muted">OpenRouter: ключ на openrouter.ai → Keys. Бесплатные модели доступны; для РФ нужен VPN (как выяснили).</p>`}
-  </div>`;
-  $app.innerHTML=shell(html,'ai');
-  if(!ready){
-    document.getElementById('ai-save').onclick=()=>{
-      const pi=+document.getElementById('ai-preset').value;
-      const url=(document.getElementById('ai-url').value.trim()||AI_PRESETS[pi][1]).replace(/\/+$/,'');
-      const key=document.getElementById('ai-key').value.trim();
-      const model=document.getElementById('ai-model').value.trim()||AI_PRESETS[pi][2];
-      if(!key){toast('Вставьте ключ API');return;}
-      STATE.settings.ai={url,key,model};queueSave();toast('Помощник настроен');renderAI();
-    };
-    return;
-  }
-  const chat=document.getElementById('ai-chat'),inp=document.getElementById('ai-in');
-  let busy=false;
-  STATE.settings.aiHistory=STATE.settings.aiHistory||[];
-  for(const m of STATE.settings.aiHistory.slice(-20))add_md(m.role==='user'?'user':'ai',m.content);
-  if(!STATE.settings.aiHistory.length){const d=document.createElement('div');d.className='ai-msg ai-ai muted';d.textContent='Спросите что угодно о японском. Я помню контекст нашей беседы.';chat.appendChild(d);}
-  const add=(role,text)=>{const d=document.createElement('div');d.className='ai-msg ai-'+role;d.innerHTML=mdRender(text||'');chat.appendChild(d);chat.scrollIntoView(false);return d;};
-  const add_md=add;
-  const send=async(prompt)=>{
-    if(busy)return;busy=true;
-    add('user',prompt);
-    const el=add('ai','Думаю…');
-    try{
-      /* Программа курса строится из актуальных данных — новые уроки подхватываются сами */
-      const outline=LESSONS.map((L,i)=>{
-        const g=(L.grammar||L.blocks||[]).filter(b=>b&&b.rule).map(b=>b.rule).slice(0,4).join('; ');
-        const ws=(L.words||[]).slice(0,8).map(wid=>{const w=wordEntryFor(WORDS,wid);return w?w.jp:'';}).filter(Boolean).join(', ');
-        return (i+1)+'. '+(L.title||L.canDo||'')+(g?' — грамматика: '+g:'')+(ws?' — слова: '+ws:'');
-      }).join('\n');
-      const mLess=prompt.match(/урок\s*(\d+)/i);
-      const lessonDetail=(()=>{
-        if(!mLess)return '';
-        const L=LESSONS[+mLess[1]-1];
-        if(!L)return '';
-        const rules=(L.blocks||[]).filter(b=>b&&b.rule).map(b=>'• '+b.rule+(b.ex?' — примеры: '+b.ex:'')).join('\n');
-        const ws=(L.words||[]).map(wid=>{const w=wordEntryFor(WORDS,wid);return w?w.jp+' ('+w.kana+') — '+w.ru:'';}).filter(Boolean).join('\n');
-        return '\n\nПолное содержание запрошенного урока №'+mLess[1]+' ('+(L.title||'')+'):\n'+(rules||L.canDo||'')+'\nСлова урока:\n'+ws;
-      })();
-      const sys='Ты — преподаватель японского в приложении «Японский: путь к аниме». Отвечай по-русски, кратко и по делу, японские примеры давай с чтением хираганой в скобках и переводом. Отвечай структурированно: короткие абзацы, заголовки, списки — уместно и без воды. Пользователь изучает японский с нуля. Актуальная программа курса (всего уроков: '+LESSONS.length+'):\n'+outline+lessonDetail;
-      const hist=STATE.settings.aiHistory.slice(-12).map(m=>({role:m.role,content:m.content}));
-      const r=await fetch(cfg.url.replace(/\/+$/,'')+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+cfg.key},body:JSON.stringify({model:cfg.model,messages:[{role:'system',content:sys},...hist,{role:'user',content:prompt}],max_tokens:1500,temperature:0.6})});
-      const j=await r.json();
-      if(j.error)throw new Error(j.error.message||'ошибка API');
-      const txt=j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content;
-      STATE.settings.aiHistory.push({role:'user',content:prompt,at:Date.now()},{role:'assistant',content:txt||'',at:Date.now()});
-      if(STATE.settings.aiHistory.length>60)STATE.settings.aiHistory=STATE.settings.aiHistory.slice(-60);
-      queueSave();
-      el.innerHTML=mdRender(txt||'(пустой ответ)');
-    }catch(e){el.innerHTML='<b style="color:var(--bad)">Ошибка: '+e.message+'</b> Проверьте ключ/модель или доступность провайдера (OpenRouter — нужен VPN).';}
-    busy=false;
-  };
-  document.getElementById('ai-send').onclick=()=>{const v=inp.value.trim();if(!v)return;inp.value='';send(v);};
-  inp.addEventListener('keydown',e=>{if(e.key==='Enter'){const v=inp.value.trim();if(v){inp.value='';send(v);}}});
-  document.getElementById('ai-task').onclick=()=>{
-    if(!weak.length){toast('Слабых слов пока нет — пройдите повторения');return;}
-    send('Составь 5 коротких упражнений для тренировки этих японских слов: '+weak.join(', ')+'. Для каждого: слово (с чтением хираганой), задание, в конце — ответы отдельно.');
-  };
-  document.getElementById('ai-parse').onclick=()=>{document.getElementById('ai-parse-box').innerHTML='<textarea id="ai-frag" class="type-in" rows="4" placeholder="Вставьте реплики или субтитры из аниме (японский текст)…"></textarea><button class="btn" id="ai-frag-go">Разобрать</button>';document.getElementById('ai-frag-go').onclick=()=>{const v=document.getElementById('ai-frag').value.trim();if(v)send('Разбери по словам этот фрагмент из аниме: для каждого слова — словарная форма, чтение хираганой, перевод, грамматические формы с объяснением. Затем общий перевод и регистр вежливости:\n'+v);};};
-  document.getElementById('ai-model-sel').onchange=e=>{STATE.settings.ai.model=e.target.value;queueSave();toast('Модель: '+e.target.value);};
-  document.getElementById('ai-clear').onclick=()=>{STATE.settings.aiHistory=[];queueSave();renderAI();toast('История очищена');};
-  document.getElementById('ai-cfg-btn').onclick=()=>{if(confirm('Открыть настройки модели? Текущий ключ будет очищен.')){delete STATE.settings.ai;queueSave();renderAI();}};
+function kanaSelRows(which){
+  const sel=STATE.kanaSel||{};
+  const chosen=KANA[which].filter(r=>sel[r[0]]);
+  return chosen.length?chosen:KANA[which];
 }
 
 /* ---------- Повторения (SRS) ---------- */
