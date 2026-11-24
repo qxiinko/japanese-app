@@ -173,7 +173,8 @@ html[data-theme="dark"][data-accent="ai"]{--accent:#b39ddb;--accent-ink:#1d1430;
 
 /* ---------- Разная вёрстка: ПК (≥1024px) ---------- */
 @media (min-width:900px){
-  #app{max-width:1080px;padding:0 32px 60px 210px;position:relative}
+  #app{max-width:1080px;padding:76px 32px 60px 210px;position:relative}
+  html{scroll-padding-top:80px}
   nav.tabs{position:fixed;left:0;top:0;bottom:0;width:178px;flex-direction:column;justify-content:flex-start;
     gap:2px;background:var(--card);border-right:2px solid var(--line);border-bottom:none;
     margin:0;padding:76px 10px 20px;z-index:40;overflow:visible}
@@ -3167,5 +3168,6 @@ const KANA_READINGS={'ぬ':'ну','き':'ки','ろ':'ро','ほ':'хо','わ':'
 })();
 
 </script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","spa":2}' crossorigin="anonymous"></script>
 </body>
 </html>
