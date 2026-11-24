@@ -200,6 +200,30 @@ html[data-theme="dark"][data-accent="ai"]{--accent:#b39ddb;--accent-ink:#1d1430;
   .course-list{display:block}
 }
 
+/* Кнопка «← Сегодня» в навигации */
+.tabs .tab-back{margin-left:auto;color:var(--ink2);border:1px dashed var(--line);background:transparent}
+.tabs .tab-back:hover{color:var(--ink);border-color:var(--ink2)}
+/* Раздел «Кана»: Duolingo-стиль */
+.kana-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:12px 0}
+@media(max-width:600px){.kana-grid{grid-template-columns:repeat(5,1fr);gap:6px}}
+.kana-cell{aspect-ratio:1/1.15;background:var(--card);border:1.5px solid var(--line);border-radius:12px;padding:6px 2px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;box-shadow:0 1px 3px rgba(60,50,30,.06);transition:transform .06s}
+.kana-cell:active{transform:scale(.95)}
+.kana-cell .kana-jp{font-size:clamp(1.5rem,4vw,2.1rem);font-family:var(--font-jp);line-height:1.1;color:var(--ink)}
+.kana-cell .kana-rom{color:var(--ink2);font-size:.72rem;font-weight:600;letter-spacing:.02em}
+.kana-cell.kana-bad{border:2px solid var(--seal);background:linear-gradient(180deg,rgba(201,79,57,.10),var(--card))}
+.kana-cell.kana-bad .kana-rom{color:var(--seal);font-weight:800}
+.kana-head{display:flex;align-items:center;gap:12px;margin-bottom:6px;flex-wrap:wrap}
+.kana-head h2{margin:0}
+.kana-switch{display:flex;border:2px solid var(--accent);border-radius:999px;overflow:hidden}
+.kana-switch button{border:none;border-radius:0;background:transparent;padding:8px 20px;font-weight:700;color:var(--accent)}
+.kana-switch button.on{background:var(--accent);color:var(--accent-ink)}
+.kana-learn{width:100%;border-radius:14px;font-size:1.02rem;letter-spacing:.03em;text-transform:uppercase}
+/* Помощник: чат */
+.ai-chat{max-height:420px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px}
+.ai-msg{max-width:92%;padding:10px 12px;border-radius:12px;font-size:.95rem;line-height:1.45}
+.ai-user{align-self:flex-end;background:var(--accent);color:var(--accent-ink);border-bottom-right-radius:4px}
+.ai-ai{align-self:flex-start;background:var(--bg2);border:1px solid var(--line);border-bottom-left-radius:4px}
+
 </style>
 </head>
 <body>
@@ -682,6 +706,44 @@ function logEvent(field,n){ // field: 'answers'|'correct'|'reviews'
    Все японские примеры авторские, составлены для курса;
    ссылку на «проверку носителем» не используем.
    ============================================================ */
+/* ── Кана: годзюон + дакутен. [знак, ромадзи, допустимые варианты] ── */
+const KANA={
+ hira:[
+  ['あ','a'],['い','i'],['う','u'],['え','e'],['お','o'],
+  ['か','ka'],['き','ki'],['く','ku'],['け','ke'],['こ','ko'],
+  ['さ','sa'],['し','shi',['si']],['す','su'],['せ','se'],['そ','so'],
+  ['た','ta'],['ち','chi',['ti']],['つ','tsu',['tu']],['て','te'],['と','to'],
+  ['な','na'],['に','ni'],['ぬ','nu'],['ね','ne'],['の','no'],
+  ['は','ha'],['ひ','hi'],['ふ','fu',['hu']],['へ','he'],['ほ','ho'],
+  ['ま','ma'],['み','mi'],['む','mu'],['め','me'],['も','mo'],
+  ['や','ya'],['ゆ','yu'],['よ','yo'],
+  ['ら','ra'],['り','ri'],['る','ru'],['れ','re'],['ろ','ro'],
+  ['わ','wa'],['を','wo',['o']],['ん','n',['nn']],
+  ['が','ga'],['ぎ','gi'],['ぐ','gu'],['げ','ge'],['ご','go'],
+  ['ざ','za'],['じ','ji',['zi']],['ず','zu'],['ぜ','ze'],['ぞ','zo'],
+  ['だ','da'],['ぢ','ji',['di','zi']],['づ','zu',['du','dzu']],['で','de'],['ど','do'],
+  ['ば','ba'],['び','bi'],['ぶ','bu'],['べ','be'],['ぼ','bo'],
+  ['ぱ','pa'],['ぴ','pi'],['ぷ','pu'],['ぺ','pe'],['ぽ','po']
+ ],
+ kata:[
+  ['ア','a'],['イ','i'],['ウ','u'],['エ','e'],['オ','o'],
+  ['カ','ka'],['キ','ki'],['ク','ku'],['ケ','ke'],['コ','ko'],
+  ['サ','sa'],['シ','shi',['si']],['ス','su'],['セ','se'],['ソ','so'],
+  ['タ','ta'],['チ','chi',['ti']],['ツ','tsu',['tu']],['テ','te'],['ト','to'],
+  ['ナ','na'],['ニ','ni'],['ヌ','nu'],['ネ','ne'],['ノ','no'],
+  ['ハ','ha'],['ヒ','hi'],['フ','fu',['hu']],['ヘ','he'],['ホ','ho'],
+  ['マ','ma'],['ミ','mi'],['ム','mu'],['メ','me'],['モ','mo'],
+  ['ヤ','ya'],['ユ','yu'],['ヨ','yo'],
+  ['ラ','ra'],['リ','ri'],['ル','ru'],['レ','re'],['ロ','ro'],
+  ['ワ','wa'],['ヲ','wo',['o']],['ン','n',['nn']],
+  ['ガ','ga'],['ギ','gi'],['グ','gu'],['ゲ','ge'],['ゴ','go'],
+  ['ザ','za'],['ジ','ji',['zi']],['ズ','zu'],['ゼ','ze'],['ゾ','zo'],
+  ['ダ','da'],['ヂ','ji',['di','zi']],['ヅ','zu',['du','dzu']],['デ','de'],['ド','do'],
+  ['バ','ba'],['ビ','bi'],['ブ','bu'],['ベ','be'],['ボ','bo'],
+  ['パ','pa'],['ピ','pi'],['プ','pu'],['ペ','pe'],['ポ','po']
+ ]
+};
+
 const CONTENT_VERSION=6;
 
 /* ---------- Словарь ---------- */
@@ -1570,9 +1632,6 @@ LESSONS.push(
 }
 );
 
-if(typeof module!=='undefined'&&module.exports){
-  module.exports={WORDS,DIAG,LESSONS,EXAMS,CONTENT_VERSION};
-}
 
 /* ============================================================
    ЭТАП 2 (закрытие): сцены 5–6 и слова до ~150.
@@ -2118,7 +2177,7 @@ LESSONS.push(
  ]
 }
 );
-
+if(typeof module!=='undefined'&&module.exports){module.exports={WORDS,DIAG,LESSONS,EXAMS,CONTENT_VERSION,KANA};}
 
 'use strict';
 /* ============================================================
@@ -2194,14 +2253,15 @@ setInterval(()=>{
 },60000);
 
 /* ---------- Каркас экрана ---------- */
-const TABS=[['today','Сегодня'],['course','Курс'],['review','Повторения'],['lab','Лаборатория'],['stats','Статистика'],['settings','Настройки']];
+const TABS=[['today','Сегодня'],['course','Курс'],['kana','Кана'],['review','Повторения'],['lab','Лаборатория'],['ai','Помощник'],['stats','Статистика'],['settings','Настройки']];
 function shell(content,active){
   const inSession=SESSION&&SESSION.kind;
   return `<div class="top"><div class="hanko">今日</div>
     <div><div class="title">Японский: путь к аниме</div>
     <div class="sub">контент v${CONTENT_VERSION} · данные v${STATE_VERSION} · ${inSession?'сеанс идёт':'локальный режим'}</div></div></div>
     ${inSession?'':`<nav class="tabs">${TABS.map(([id,l])=>
-      `<button data-go="${id}" ${id===active?'aria-current="page"':''}>${l}</button>`).join('')}</nav>`}
+      `<button data-go="${id}" ${id===active?'aria-current="page"':''}>${l}</button>`).join('')}
+      </nav>`}
     ${content}`;
 }
 function go(name,params){SCREEN={name,params:params||{}};SESSION=null;render();}
@@ -2209,6 +2269,8 @@ function render(){applySettings();
   if(SCREEN.name==='today')renderToday();
   else if(SCREEN.name==='course')renderCourse();
   else if(SCREEN.name==='review')renderReviewHome();
+  else if(SCREEN.name==='kana')renderKana();
+  else if(SCREEN.name==='ai')renderAI();
   else if(SCREEN.name==='lab')renderLab();
   else if(SCREEN.name==='stats')renderStats();
   else if(SCREEN.name==='settings')renderSettings();
@@ -2217,7 +2279,9 @@ function render(){applySettings();
 }
 $app.addEventListener('click',e=>{
   const b=e.target.closest('[data-go]');
-  if(b){go(b.dataset.go);}
+  if(b){go(b.dataset.go);return;}
+  const q=e.target.closest('[data-quit]');
+  if(q){SESSION=null;go(q.dataset.quit||'today');}
 });
 document.getElementById('toast');
 
@@ -2401,7 +2465,7 @@ function renderDiag(){
   const it=DIAG.items[SESSION.i];
   const isType=it.kind==='hira-type'||it.kind==='kata-type';
   const html=`<div class="lesson-step">
-   <div class="spread"><span class="badge">Вопрос ${SESSION.i+1} из ${DIAG.items.length}</span><button class="btn small ghost" id="quit-diag">Прервать</button></div>
+   <div class="spread"><span class="badge">Вопрос ${SESSION.i+1} из ${DIAG.items.length}</span><button class="btn small ghost" data-quit="course">Прервать</button></div>
    <div class="progress-bar"><div style="width:${(SESSION.i/DIAG.items.length)*100}%"></div></div>
    <div class="card"><span class="badge">${it.kind.startsWith('kata')?'катакана':'хирагана'}</span>
     <p class="q-prompt">${it.q}</p><span class="q-jp">${esc(it.jp)}</span>
@@ -2412,7 +2476,6 @@ function renderDiag(){
       :`<div class="opts">${it.options.map((o,i)=>`<button class="opt" data-i="${i}">${esc(o)}</button>`).join('')}</div>`}
    </div></div>`;
   $app.innerHTML=shell(html,null);
-  document.getElementById('quit-diag').onclick=()=>{if(confirm('Прервать диагностику? Результат не сохранится.')){SESSION=null;go('course');}};
   if(isType){
     const inp=document.getElementById('diag-input');inp.focus();
     const check=()=>{
@@ -2487,10 +2550,9 @@ function renderLessonStep(){
        <div class="progress-bar"><div style="width:${(SESSION.step/(L.blocks.length+2))*100}%"></div></div>
        <div class="card">${inner}</div>
        <button class="btn big" id="next-block">${last?'К заданиям':'Дальше'}</button>
-       <button class="btn ghost" id="quit-lesson" style="margin-top:10px;width:100%">Выйти (прогресс шагов сохранится частично)</button>
+       <button class="btn ghost" data-quit="course" style="margin-top:10px;width:100%">Прервать урок</button>
       </div>`,null);
       document.getElementById('next-block').onclick=()=>{SESSION.step++;renderLessonStep();};
-      document.getElementById('quit-lesson').onclick=()=>{SESSION=null;go('course');};
       return;
     }
   }
@@ -2537,9 +2599,9 @@ function renderExercise(ex){
   }
   const isExam=SESSION.kind==='exam';
   const headBadge=isExam?`<span class="badge">Контрольная: задание ${SESSION.exIdx+1} из ${list.length}</span>
-    <button class="btn small ghost" id="quit-exam">Прервать</button>`
+    <button class="btn small ghost" data-quit="course">Прервать</button>`
    :`<span class="badge">Задание ${SESSION.exIdx+1} из ${list.length}</span>
-    <button class="btn small ghost" id="quit-lesson-ex">Прервать</button>
+    <button class="btn small ghost" data-quit="course">Прервать</button>
     <button class="btn small ghost" data-action="report">Сообщить об ошибке в задании</button>`;
   $app.innerHTML=shell(`<div class="lesson-step">
    <div class="spread">${headBadge}</div>
@@ -2548,9 +2610,7 @@ function renderExercise(ex){
    <div class="card">${body}</div>
    <div id="fb-slot"></div>
   </div>`,null);
-  if(isExam)$app.querySelector('#quit-exam').onclick=()=>{SESSION=null;go('course');};
-  const qex=$app.querySelector('#quit-lesson-ex');
-  if(qex)qex.onclick=()=>{if(confirm('Прервать урок? Прогресс этого урока не сохранится.')){SESSION=null;go('course');}};
+
   const checkBtnHtml=()=>`<button class="btn big" id="check-btn">Проверить</button>`;
   if(ex.type==='choice'||ex.type==='listen'){
     let sel=null;
@@ -2888,6 +2948,161 @@ function finishExam(){
   if(r)r.onclick=()=>startExam(E.id);
 }
 
+
+/* ---------- Кана: таблица + проверки (Duolingo-стиль) ---------- */
+function kanaStats(){STATE.kanaStats=STATE.kanaStats||{};return STATE.kanaStats;}
+function kanaProblem(jp){const st=kanaStats()[jp];return st&&st.a>0&&st.o/st.a<0.7;}
+function renderKana(){
+  const which=SCREEN.params&&SCREEN.params.k||'hira';
+  const tbl=KANA[which];
+  const probs=Object.keys(kanaStats()).filter(j=>kanaProblem(j)).length;
+  const cells=tbl.map(([jp,rom])=>{
+    const p=kanaProblem(jp);
+    return '<div class="kana-cell '+(p?'kana-bad':'')+'"><span class="jp kana-jp">'+jp+'</span><span class="kana-rom">'+rom+'</span></div>';
+  }).join('');
+  const html='<div class="card">'+
+   '<div class="kana-head"><h2>Кана</h2>'+
+    '<div class="kana-switch">'+
+     '<button class="'+(which==='hira'?'on':'')+'" id="k-hira">ひらがな Хирагана</button>'+
+     '<button class="'+(which==='kata'?'on':'')+'" id="k-kata">カタカナ Катакана</button>'+
+    '</div></div>'+
+   '<p class="muted">Проблемных знаков: <b>'+probs+'</b> (подсвечены и выпадают в проверках чаще — по вашим ответам).</p>'+
+   '<div class="kana-grid">'+cells+'</div>'+
+   '<div class="row" style="margin-top:14px">'+
+    '<button class="btn big kana-learn" id="k-quiz-h">Проверка хираганы</button>'+
+    '<button class="btn big kana-learn ghost" id="k-quiz-k">Проверка катаканы</button>'+
+    '<button class="btn kana-learn ghost" id="k-quiz-all">Всё вместе</button>'+
+   '</div></div>';
+  $app.innerHTML=shell(html,'kana');
+  document.getElementById('k-hira').onclick=()=>{SCREEN={name:'kana',params:{k:'hira'}};render();};
+  document.getElementById('k-kata').onclick=()=>{SCREEN={name:'kana',params:{k:'kata'}};render();};
+  document.getElementById('k-quiz-h').onclick=()=>startKanaQuiz([['hira',10]]);
+  document.getElementById('k-quiz-k').onclick=()=>startKanaQuiz([['kata',10]]);
+  document.getElementById('k-quiz-all').onclick=()=>startKanaQuiz([['hira',8],['kata',7]]);
+}
+function kanaPick(list,n){
+  const st=kanaStats();
+  const weighted=[];
+  for(const row of list){
+    const p=kanaProblem(row[0]);
+    const w=p?3:1;
+    for(let i=0;i<w;i++)weighted.push(row);
+  }
+  const out=[],used=new Set();
+  while(out.length<Math.min(n,list.length)){
+    const row=weighted[Math.floor(Math.random()*weighted.length)];
+    if(!used.has(row[0])){used.add(row[0]);out.push(row);}
+  }
+  return out;
+}
+function startKanaQuiz(parts){
+  const quiz=[];
+  for(const [k,n] of parts)for(const row of kanaPick(KANA[k],n))quiz.push({jp:row[0],rom:row[1],alts:row[2]||[]});
+  SESSION={kind:'kana-quiz',quiz,i:0,ok:0};
+  renderKanaQuiz();
+}
+function renderKanaQuiz(){
+  if(SESSION.i>=SESSION.quiz.length){
+    const ok=SESSION.ok,n=SESSION.quiz.length;SESSION=null;go('kana');
+    toast('Проверка завершена: '+ok+' из '+n+' верно');
+    return;
+  }
+  const it=SESSION.quiz[SESSION.i];
+  const html=`<div class="lesson-step">
+   <div class="spread"><span class="badge">Знак ${SESSION.i+1} из ${SESSION.quiz.length}</span><button class="btn small ghost" data-quit="kana">Закончить</button></div>
+   <div class="progress-bar"><div style="width:${(SESSION.i/SESSION.quiz.length)*100}%"></div></div>
+   <div class="card" style="text-align:center"><span class="q-jp" style="font-size:4rem">${it.jp}</span>
+    <input class="type-in" id="kq-in" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="чтение латиницей, например: ka" style="max-width:280px;margin:12px auto">
+    <div id="kq-fb"></div><button class="btn big" id="kq-check">Проверить</button>
+   </div></div>`;
+  $app.innerHTML=shell(html,null);
+  const inp=document.getElementById('kq-in');inp.focus();
+  const st=kanaStats();st[it.jp]=st[it.jp]||{a:0,o:0};
+  const check=()=>{
+    const val=inp.value.trim().toLowerCase();
+    if(!val)return;
+    st[it.jp].a++;
+    const good=val===it.rom||it.alts.includes(val);
+    if(good){st[it.jp].o++;SESSION.ok++;SESSION.i++;queueSave();renderKanaQuiz();return;}
+    queueSave();
+    document.getElementById('kq-fb').innerHTML=`<div class="feedback bad"><b>Неверно.</b> Правильное чтение: <b>${esc(it.rom)}</b></div>`;
+    document.getElementById('kq-check').textContent='Дальше →';
+    document.getElementById('kq-check').onclick=()=>{SESSION.i++;renderKanaQuiz();};
+    inp.disabled=true;
+  };
+  document.getElementById('kq-check').onclick=check;
+  inp.addEventListener('keydown',e=>{if(e.key==='Enter')check();});
+}
+
+
+/* ---------- Помощник (LLM через OpenAI-совместимый API) ---------- */
+function aiCfg(){return STATE.settings.ai||{};}
+const AI_PRESETS=[
+ ['OpenRouter','https://openrouter.ai/api/v1','openrouter/auto'],
+ ['VseGPT','https://api.vsegpt.ru/v1','openchat/openchat-7b'],
+ ['ProxyAPI','https://api.proxyapi.ru/openai/v1','gpt-4o-mini'],
+ ['Gemini (OpenAI-совместимый)','https://generativelanguage.googleapis.com/v1beta/openai','gemini-2.0-flash']
+];
+function renderAI(){
+  const cfg=aiCfg();
+  const ready=cfg.key&&cfg.url;
+  const weak=Object.values(STATE.cards).filter(c=>c.learned!==false&&!c.suspended&&c.seen>0&&(c.correct||0)<(c.seen||1)*0.7).slice(0,15).map(c=>wordEntryFor(WORDS,c.id)?wordEntryFor(WORDS,c.id).jp:(c.jp||c.id));
+  const html=`<div class="card"><h2>Помощник</h2>
+   ${ready
+     ?`<div id="ai-chat" class="ai-chat"><div class="muted">Спросите что угодно о японском: грамматика, частица, фраза из аниме. «Объясни урок 5» — объяснит материал вашего урока.</div></div>
+       <div class="row" style="margin-top:8px"><input id="ai-in" class="type-in" style="flex:1" placeholder="Ваш вопрос…"><button class="btn" id="ai-send">Отправить</button></div>
+       <div class="row" style="margin-top:8px;flex-wrap:wrap">
+        <button class="btn small ghost" id="ai-task">Персональное задание по моим слабым словам</button>
+        <button class="btn small ghost" id="ai-parse">Разобрать фрагмент аниме</button>
+        <button class="btn small ghost" id="ai-cfg-btn">Настройки модели</button>
+       </div><div id="ai-parse-box"></div>`
+     :`<p class="muted">Помощник работает через любой OpenAI-совместимый API (OpenRouter, VseGPT, ProxyAPI…). Ключ хранится только в вашем браузере.</p>
+       <div class="field"><label>Провайдер</label><select id="ai-preset">${AI_PRESETS.map((p,i)=>`<option value="${i}">${p[0]}</option>`).join('')}</select></div>
+       <div class="field"><label>Адрес API</label><input id="ai-url" placeholder="https://openrouter.ai/api/v1"></div>
+       <div class="field"><label>Ключ API</label><input id="ai-key" type="password" placeholder="sk-…"></div>
+       <div class="field"><label>Модель</label><input id="ai-model" placeholder="openrouter/auto"></div>
+       <button class="btn" id="ai-save">Сохранить</button>
+       <p class="muted">OpenRouter: ключ на openrouter.ai → Keys. Бесплатные модели доступны; для РФ нужен VPN (как выяснили).</p>`}
+  </div>`;
+  $app.innerHTML=shell(html,'ai');
+  if(!ready){
+    document.getElementById('ai-save').onclick=()=>{
+      const pi=+document.getElementById('ai-preset').value;
+      const url=(document.getElementById('ai-url').value.trim()||AI_PRESETS[pi][1]).replace(/\/+$/,'');
+      const key=document.getElementById('ai-key').value.trim();
+      const model=document.getElementById('ai-model').value.trim()||AI_PRESETS[pi][2];
+      if(!key){toast('Вставьте ключ API');return;}
+      STATE.settings.ai={url,key,model};queueSave();toast('Помощник настроен');renderAI();
+    };
+    return;
+  }
+  const chat=document.getElementById('ai-chat'),inp=document.getElementById('ai-in');
+  let busy=false;
+  const add=(role,text)=>{const d=document.createElement('div');d.className='ai-msg ai-'+role;d.innerHTML=(text||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\n/g,'<br>');chat.appendChild(d);chat.parentElement&&chat.scrollIntoView(false);return d;};
+  const send=async(prompt)=>{
+    if(busy)return;busy=true;
+    add('user',prompt);
+    const el=add('ai','Думаю…');
+    try{
+      const sys='Ты — преподаватель японского в приложении «Японский: путь к аниме». Отвечай по-русски, кратко и по делу, японские примеры давай с чтением хираганой в скобках и переводом. Пользователь изучает японский с нуля по курсу из 23 уроков (уроки 1–5: кана, приветствия, です; 6–10: частицы は/が/を/に/で, глаголы; 11–23: формы, вежливая речь, желания, давай-формы и т.д.).';
+      const r=await fetch(cfg.url.replace(/\/+$/,'')+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+cfg.key},body:JSON.stringify({model:cfg.model,messages:[{role:'system',content:sys},{role:'user',content:prompt}],max_tokens:1500,temperature:0.6})});
+      const j=await r.json();
+      if(j.error)throw new Error(j.error.message||'ошибка API');
+      const txt=j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content;
+      el.innerHTML=(txt||'(пустой ответ)').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\n/g,'<br>');
+    }catch(e){el.innerHTML='<b style="color:var(--bad)">Ошибка: '+e.message+'</b> Проверьте ключ/модель или доступность провайдера (OpenRouter — нужен VPN).';}
+    busy=false;
+  };
+  document.getElementById('ai-send').onclick=()=>{const v=inp.value.trim();if(!v)return;inp.value='';send(v);};
+  inp.addEventListener('keydown',e=>{if(e.key==='Enter'){const v=inp.value.trim();if(v){inp.value='';send(v);}}});
+  document.getElementById('ai-task').onclick=()=>{
+    if(!weak.length){toast('Слабых слов пока нет — пройдите повторения');return;}
+    send('Составь 5 коротких упражнений для тренировки этих японских слов: '+weak.join(', ')+'. Для каждого: слово (с чтением хираганой), задание, в конце — ответы отдельно.');
+  };
+  document.getElementById('ai-parse').onclick=()=>{document.getElementById('ai-parse-box').innerHTML='<textarea id="ai-frag" class="type-in" rows="4" placeholder="Вставьте реплики или субтитры из аниме (японский текст)…"></textarea><button class="btn" id="ai-frag-go">Разобрать</button>';document.getElementById('ai-frag-go').onclick=()=>{const v=document.getElementById('ai-frag').value.trim();if(v)send('Разбери по словам этот фрагмент из аниме: для каждого слова — словарная форма, чтение хираганой, перевод, грамматические формы с объяснением. Затем общий перевод и регистр вежливости:\n'+v);};};
+  document.getElementById('ai-cfg-btn').onclick=()=>{if(confirm('Открыть настройки модели? Текущий ключ будет очищен.')){delete STATE.settings.ai;queueSave();renderAI();}};
+}
+
 /* ---------- Повторения (SRS) ---------- */
 function kanjiDeck(){
   const dict={};
@@ -2914,7 +3129,10 @@ function renderReviewHome(){
   const pool=poolNewWords();
   const newN=Math.min(pool.length,STATE.settings.newLimit);
   const learnedW=Object.values(STATE.cards).filter(c=>c.learned!==false&&!c.suspended).length;
-  const wordsTotal=Object.keys(STATE.cards).length;
+  const courseWords=new Set();
+  for(const L of LESSONS)for(const wid of L.words)courseWords.add(wid);
+  for(const id of Object.keys(STATE.cards))if(!id.startsWith('k_')&&!id.startsWith('kz_'))courseWords.add(id);
+  const wordsTotal=courseWords.size;
   const wordsLearned=Object.values(STATE.cards).filter(c=>c.learned!==false&&(c.ivl||0)>=21).length;
   const deck=kanjiDeck();
   const dueK=dueKanji().length;
@@ -2990,12 +3208,11 @@ function renderLearnCard(){
     back=`<p style="font-size:1.25rem"><b>${esc(ru||'—')}</b></p>${kana?`<p class="muted jp">чтение: ${esc(kana)}</p>`:''}`;
   }
   $app.innerHTML=shell(`<div class="lesson-step">
-   <div class="spread"><span class="badge">Новое ${isK?'кандзи':'слово'} ${SESSION.i+1} из ${SESSION.queue.length}</span><button class="btn small ghost" id="quit-review">Закончить</button></div>
+   <div class="spread"><span class="badge">Новое ${isK?'кандзи':'слово'} ${SESSION.i+1} из ${SESSION.queue.length}</span><button class="btn small ghost" data-quit="review">Закончить</button></div>
    <div class="card srs-card" style="text-align:center">${front}<div id="srs-back" style="display:none">${back}</div>
     <button class="btn big" id="reveal">Показать</button>
     <button class="btn big" id="learned-btn" style="display:none">Изучил — в повторения</button>
    </div></div>`,'review');
-  document.getElementById('quit-review').onclick=finishReview;
   document.getElementById('reveal').onclick=()=>{
     document.getElementById('reveal').style.display='none';
     document.getElementById('srs-back').style.display='block';
@@ -3034,7 +3251,7 @@ function renderReviewCard(){
   const front=dir==='rec'?jpText:dir==='read'?(ru||jpText):jpText;
   $app.innerHTML=shell(`<div class="lesson-step">
    <div class="spread"><span class="badge">Карточка ${SESSION.i+1} из ${SESSION.queue.length}${dir?' · '+({rec:'узнавание',read:'чтение',listen:'на слух'})[dir]:''}</span>
-    <button class="btn small ghost" id="quit-review">Закончить</button></div>
+    <button class="btn small ghost" data-quit="review">Закончить</button></div>
    <div class="card srs-card">
     ${dir==='listen'?'':'<span class="q-jp">'+renderFuri(front)+(dir==='read'&&ru?('<div class=\'muted\' style=\'font-size:.95rem\'>(японское: '+esc(jpText)+')</div>'):'')+'</span>'}
     ${dir==='listen'?'<div class="audio-note" id="listen-note">Прослушайте (голос) и выберите значение.</div><div class="row" style="justify-content:center;margin:14px 0"><button class="play-btn" id="play-btn">▶</button></div>':''}
@@ -3052,7 +3269,6 @@ function renderReviewCard(){
       <button class="g3" data-g="3">Легко</button>
     </div>
    </div></div>`,null);
-  document.getElementById('quit-review').onclick=finishReview;
   if(dir==='listen'){
     document.getElementById('play-btn').onclick=()=>{
       if(speak(jpText)){const n=document.getElementById('listen-note');if(n)n.textContent='Прослушайте и ответьте. Можно прослушать снова.';}
@@ -3090,12 +3306,8 @@ function answerReview(g){
 }
 function finishReview(){
   const done=SESSION?SESSION.reviewsDone:0;
-  SESSION=null;
-  $app.innerHTML=shell(`<div class="card" style="text-align:center">
-   <h2>Сеанс повторений завершён</h2><p>Повторено карточек: <b>${done}</b></p>
-   <p class="muted">Карточки, отмеченные «не помню», вернутся через 10 минут.</p>
-   <button class="btn big" data-go="today">На главный экран</button></div>`,'review');
-  $app.querySelector('[data-go="today"]').onclick=()=>go('today');
+  SESSION=null;go('review');
+  toast('Сеанс завершён: повторено карточек — '+done);
 }
 
 /* ---------- Статистика ---------- */
