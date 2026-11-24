@@ -3031,6 +3031,74 @@ function renderStats(){
 }
 
 /* ---------- Настройки ---------- */
+
+/* ---------- Облако (Supabase REST, без библиотек) ---------- */
+function cloudCfg(){return STATE.settings.cloud||null;}
+function cloudSess(){return STATE.settings.cloudSession||null;}
+function cloudStrip(){const c=JSON.parse(JSON.stringify(STATE));if(c.settings){delete c.settings.cloudSession;}return c;}
+async function cloudApi(path,opts){
+  const cfg=cloudCfg();if(!cfg)throw new Error('Облако не настроено');
+  const h=Object.assign({'apikey':cfg.key,'Content-Type':'application/json'},opts&&opts.headers||{});
+  const r=await fetch(cfg.url+path,Object.assign({},opts,{headers:h}));
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(j.msg||j.error_description||j.message||('HTTP '+r.status));
+  return j;
+}
+async function cloudEnsureToken(){
+  const ss=cloudSess();if(!ss)return null;
+  if(ss.expires_at&&ss.expires_at>Date.now()/1000+60)return ss;
+  const cfg=cloudCfg();
+  const j=await cloudApi('/auth/v1/token?grant_type=refresh_token',{method:'POST',body:JSON.stringify({refresh_token:ss.refresh_token})});
+  STATE.settings.cloudSession={access_token:j.access_token,refresh_token:j.refresh_token,uid:j.user.id,email:j.user.email,expires_at:Math.floor(Date.now()/1000)+j.expires_in};
+  queueSave();return STATE.settings.cloudSession;
+}
+function cloudBind(){
+  const $=id=>document.getElementById(id);
+  const cfgInput=$('cloud-url'),keyInput=$('cloud-key');
+  $('cloud-save-cfg').onclick=()=>{
+    const url=(cfgInput.value||'').trim().replace(/\/+$/,''),key=(keyInput.value||'').trim();
+    if(!/^https:\/\/.+\.supabase\.co/.test(url)||!key){toast('Нужны URL вида https://xxx.supabase.co и ключ sb_publishable_…');return;}
+    STATE.settings.cloud={url,key};queueSave();toast('Сохранено');renderSettings();
+  };
+  const reg=$('cloud-signup'),log=$('cloud-login'),out=$('cloud-logout'),up=$('cloud-up'),down=$('cloud-down');
+  if(reg)reg.onclick=async()=>{
+    try{
+      const j=await cloudApi('/auth/v1/signup',{method:'POST',body:JSON.stringify({email:$('cloud-email').value.trim(),password:$('cloud-pass').value})});
+      if(!j.access_token){toast('Проверьте почту: пришло письмо подтверждения (или выключите Confirm email в Supabase)');return;}
+      STATE.settings.cloudSession={access_token:j.access_token,refresh_token:j.refresh_token,uid:j.user.id,email:j.user.email,expires_at:Math.floor(Date.now()/1000)+j.expires_in};
+      queueSave();toast('Аккаунт создан, вы вошли');renderSettings();
+    }catch(e){toast('Ошибка: '+e.message);}
+  };
+  if(log)log.onclick=async()=>{
+    try{
+      const j=await cloudApi('/auth/v1/token?grant_type=password',{method:'POST',body:JSON.stringify({email:$('cloud-email').value.trim(),password:$('cloud-pass').value})});
+      STATE.settings.cloudSession={access_token:j.access_token,refresh_token:j.refresh_token,uid:j.user.id,email:j.user.email,expires_at:Math.floor(Date.now()/1000)+j.expires_in};
+      queueSave();toast('Вошли: '+j.user.email);renderSettings();
+    }catch(e){toast('Ошибка: '+e.message);}
+  };
+  if(out)out.onclick=()=>{delete STATE.settings.cloudSession;queueSave();toast('Вышли из облака');renderSettings();};
+  if(up)up.onclick=async()=>{
+    try{
+      const ss=await cloudEnsureToken();if(!ss)return;
+      await cloudApi('/rest/v1/progress?on_conflict=id',{method:'POST',headers:{'Authorization':'Bearer '+ss.access_token,'Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify([{id:ss.uid,data:cloudStrip()}])});
+      STATE.settings.cloudLastSync=new Date().toISOString();queueSave();toast('Прогресс залит в облако ✓');renderSettings();
+    }catch(e){toast('Ошибка: '+e.message);}
+  };
+  if(down)down.onclick=async()=>{
+    try{
+      const ss=await cloudEnsureToken();if(!ss)return;
+      const rows=await cloudApi('/rest/v1/progress?id=eq.'+ss.uid+'&select=data,updated_at',{headers:{'Authorization':'Bearer '+ss.access_token}});
+      if(!rows.length){toast('В облаке пока пусто — сначала залейте прогресс');return;}
+      const cloudDate=new Date(rows[0].updated_at),localDate=STATE.settings.cloudLastSync?new Date(STATE.settings.cloudLastSync):null;
+      if(!confirm('Заменить локальный прогресс облачным (от '+cloudDate.toLocaleString('ru-RU')+')? Локальные изменения после последней синхронизации будут потеряны.'))return;
+      const sess=STATE.settings.cloudSession,cfg=STATE.settings.cloud,last=STATE.settings.cloudLastSync;
+      STATE=rows[0].data;
+      STATE.settings=STATE.settings||{};STATE.settings.cloud=cfg;STATE.settings.cloudSession=sess;STATE.settings.cloudLastSync=last;
+      await persistState();applySettings();toast('Прогресс загружен из облака ✓');go('today');
+    }catch(e){toast('Ошибка: '+e.message);}
+  };
+}
+
 function renderSettings(){
   const s=STATE.settings;
   const html=`<div class="card">
@@ -3063,6 +3131,24 @@ function renderSettings(){
    <p class="muted">Прогресс хранится локально в этом браузере и привязан к адресу страницы. Экспортируйте файл, чтобы перенести прогресс на другое устройство (это ручной перенос, а не автоматическая синхронизация). Импорт объединяет данные без удаления истории: по каждой карточке берётся более новая запись.</p>
    <div class="row"><button class="btn" id="btn-export">Экспорт в JSON</button>
    <label class="btn ghost" style="display:inline-block">Импорт из JSON<input type="file" id="btn-import" accept=".json,application/json" style="display:none"></label></div>
+  </div>
+  <div class="card"><h3>Облако (Supabase)</h3>
+   ${cloudCfg()
+     ?`<p class="muted">Проект подключён. ${cloudSess()?('Вошли: <b>'+esc(cloudSess().email||'')+'</b>'):'Вход не выполнен.'} ${s.cloudLastSync?('Последняя синхронизация: '+new Date(s.cloudLastSync).toLocaleString('ru-RU')):''}</p>`
+     :`<div class="field"><label>Project URL</label><input id="cloud-url" placeholder="https://xxxx.supabase.co"></div>
+       <div class="field"><label>Publishable key</label><input id="cloud-key" placeholder="sb_publishable_…"></div>
+       <button class="btn small" id="cloud-save-cfg">Сохранить проект</button>
+       <p class="muted">Ключи берутся в Supabase: Settings → Data API (URL) и API Keys → Publishable key. Это публичные значения, доступ к чужим данным они не дают.</p>`}
+   ${cloudCfg()&&cloudSess()
+     ?`<div class="row" style="margin-top:10px"><button class="btn" id="cloud-up">Залить прогресс в облако</button>
+       <button class="btn ghost" id="cloud-down">Загрузить из облака</button>
+       <button class="btn small ghost" id="cloud-logout">Выйти</button></div>`
+     :cloudCfg()
+     ?`<div class="field" style="margin-top:10px"><label>E-mail</label><input id="cloud-email" type="email" autocomplete="username"></div>
+       <div class="field"><label>Пароль (мин. 6 символов)</label><input id="cloud-pass" type="password" autocomplete="current-password"></div>
+       <div class="row"><button class="btn" id="cloud-login">Войти</button><button class="btn ghost" id="cloud-signup">Регистрация</button></div>
+       <p class="muted">Один аккаунт = один прогресс. На новом устройстве войдите тем же e-mail и нажмите «Загрузить из облака».</p>`
+     :''}
   </div>
   <div class="card"><h3>Импорт из Anki (текстовый экспорт)</h3>
    <p class="muted">В Anki: выберите колоду → Файл → Экспорт → формат «Простой текст, поля через табуляцию». Файл .apkg не поддерживается. Существующие значения не перезаписываются: дубликаты показываются и пропускаются с вашего подтверждения.</p>
@@ -3152,6 +3238,7 @@ function renderSettings(){
     }
   };
 }
+  cloudBind();
 function exportProgress(){
   const data=JSON.stringify({app:'jp-anime-path',version:STATE_VERSION,exported_at:new Date().toISOString(),state:STATE},null,1);
   const blob=new Blob([data],{type:'application/json'});
