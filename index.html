@@ -3056,7 +3056,10 @@ function cloudBind(){
   const $=id=>document.getElementById(id);
   const on=(id,fn)=>{const el=$(id);if(el)el.onclick=fn;};
   on('cloud-save-cfg',()=>{
-    const url=($('cloud-url')?.value||'').trim().replace(/\/+$/,''),key=($('cloud-key')?.value||'').trim();
+    let url=($('cloud-url')?.value||'').trim().replace(/\/+$/,'');
+    const mUrl=url.match(/^(https:\/\/[a-z0-9-]+\.supabase\.co)\//i);
+    if(mUrl)url=mUrl[1]; /* отбросить хвосты вида /rest/v1/ */
+    const key=($('cloud-key')?.value||'').trim();
     if(!/^https:\/\/.+\.supabase\.co/.test(url)||!key){toast('Нужны URL вида https://xxx.supabase.co и ключ sb_publishable_…');return;}
     STATE.settings.cloud={url,key};queueSave();toast('Сохранено');renderSettings();
   });
