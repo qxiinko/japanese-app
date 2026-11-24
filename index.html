@@ -756,20 +756,20 @@ const DIAG={
  title:'Диагностика каны',
  intro:'Проверим хирагану и катакану. Это не экзамен: по результату приложение решит, что убрать из обязательного маршрута, а какие слабые знаки вернуть в ежедневные повторения.',
  items:[
-  {id:'d1',kind:'hira',jp:'ぬ',q:'Какой это знак?',options:['ぬ','め','ね','わ'],answer:0},
-  {id:'d2',kind:'hira',jp:'き',q:'Какой это знак?',options:['さ','き','ち','お'],answer:1},
-  {id:'d3',kind:'hira',jp:'ろ',q:'Какой это знак?',options:['る','そ','ろ','ん'],answer:2},
-  {id:'d4',kind:'hira',jp:'ほ',q:'Какой это знак?',options:['は','ほ','き','ま'],answer:1},
+  {id:'d1',kind:'hira-type',jp:'ぬ',q:'Введите его чтение ромадзи (латиницей)',accept:['ну']},
+  {id:'d2',kind:'hira-type',jp:'き',q:'Введите его чтение ромадзи (латиницей)',accept:['ки']},
+  {id:'d3',kind:'hira-type',jp:'ろ',q:'Введите его чтение ромадзи (латиницей)',accept:['ро']},
+  {id:'d4',kind:'hira-type',jp:'ほ',q:'Введите его чтение ромадзи (латиницей)',accept:['хо']},
   {id:'d5',kind:'hira',jp:'ねこ',q:'Что это слово означает?',options:['кошка','рыба','дом','школа'],answer:0},
   {id:'d6',kind:'hira',jp:'さかな',q:'Что это слово означает?',options:['сакура','вопрос','рыба','книга'],answer:2},
-  {id:'d7',kind:'kata',jp:'ツ',q:'Какой это знак?',options:['シ','ソ','ツ','ン'],answer:2},
-  {id:'d8',kind:'kata',jp:'ソ',q:'Какой это знак?',options:['ン','ソ','シ','ツ'],answer:1},
-  {id:'d9',kind:'kata',jp:'マ',q:'Какой это знак?',options:['ア','ク','ヘ','マ'],answer:3},
+  {id:'d7',kind:'kata-type',jp:'ツ',q:'Введите его чтение ромадзи (латиницей)',accept:['цу']},
+  {id:'d8',kind:'kata-type',jp:'ソ',q:'Введите его чтение ромадзи (латиницей)',accept:['со']},
+  {id:'d9',kind:'kata-type',jp:'マ',q:'Введите его чтение ромадзи (латиницей)',accept:['ма']},
   {id:'d10',kind:'kata',jp:'カラオケ',q:'Что это слово означает?',options:['телевизор','караоке','камера','рамэн'],answer:1},
   {id:'d11',kind:'kata',jp:'テレビ',q:'Что это слово означает?',options:['телефон','рамэн','телевизор','караоке'],answer:2},
   {id:'d12',kind:'kata',jp:'ラーメン',q:'Что это слово означает?',options:['рамэн','рулет','ратуша','резюме'],answer:0},
-  {id:'d13',kind:'kata',jp:'ン',q:'Какой это знак?',options:['ソ','シ','ン','ツ'],answer:2},
-  {id:'d14',kind:'hira',jp:'わ',q:'Какой это знак?',options:['ね','わ','れ','ほ'],answer:1}
+  {id:'d13',kind:'kata-type',jp:'ン',q:'Введите его чтение ромадзи (латиницей)',accept:['н']},
+  {id:'d14',kind:'hira-type',jp:'わ',q:'Введите его чтение ромадзи (латиницей)',accept:['ва']}
  ]
 };
 
@@ -2373,20 +2373,39 @@ function startDiag(){
 }
 function renderDiag(){
   const it=DIAG.items[SESSION.i];
+  const isType=it.kind==='hira-type'||it.kind==='kata-type';
   const html=`<div class="lesson-step">
    <div class="progress-bar"><div style="width:${(SESSION.i/DIAG.items.length)*100}%"></div></div>
-   <div class="card"><span class="badge">${it.kind==='kata'?'катакана':'хирагана'}</span>
+   <div class="card"><span class="badge">${it.kind.startsWith('kata')?'катакана':'хирагана'}</span>
     <p class="q-prompt">${it.q}</p><span class="q-jp">${esc(it.jp)}</span>
-    <div class="opts">${it.options.map((o,i)=>`<button class="opt" data-i="${i}">${esc(o)}</button>`).join('')}</div>
+    ${isType
+      ?`<input class="type-in" id="diag-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="например: nu" style="font-family:var(--font-ui)">
+        <p class="muted">Введите чтение латиницей (ромадзи).</p>
+        <div id="diag-fb"></div><button class="btn big" id="diag-check">Проверить</button>`
+      :`<div class="opts">${it.options.map((o,i)=>`<button class="opt" data-i="${i}">${esc(o)}</button>`).join('')}</div>`}
    </div></div>`;
   $app.innerHTML=shell(html,null);
-  $app.querySelectorAll('.opt').forEach(b=>b.addEventListener('click',()=>answerDiag(+b.dataset.i)));
+  if(isType){
+    const inp=document.getElementById('diag-input');inp.focus();
+    const check=()=>{
+      const ok=it.accept.includes(inp.value.trim().toLowerCase());
+      if(ok){SESSION[SESSION.i]=null;answerDiagType(ok,it);}
+      else{
+        document.getElementById('diag-fb').innerHTML=`<div class="feedback bad"><b>Неверно.</b> Правильное чтение: <b>${esc(it.accept[0])}</b>. Знак добавлен в повторения.</div>`;
+        answerDiagType(false,it);
+      }
+    };
+    document.getElementById('diag-check').onclick=check;
+    inp.addEventListener('keydown',e=>{if(e.key==='Enter')check();});
+  }else{
+    $app.querySelectorAll('.opt').forEach(b=>b.addEventListener('click',()=>answerDiag(+b.dataset.i)));
+  }
 }
-function answerDiag(i){
-  const it=DIAG.items[SESSION.i];
-  SESSION.answers[SESSION.i]=i;
-  if(i===it.answer){
-    if(it.kind==='hira')SESSION.hiraOk++;else SESSION.kataOk++;
+function answerDiag(i){answerDiagType(i===DIAG.items[SESSION.i].answer,DIAG.items[SESSION.i]);}
+function answerDiagType(ok,it){
+  SESSION.answers[SESSION.i]=ok?1:0;
+  if(ok){
+    if(it.kind.startsWith('hira'))SESSION.hiraOk++;else SESSION.kataOk++;
   }else if(it.jp.length<=2){
     const key='k_'+it.jp;
     if(!STATE.cards[key])STATE.cards[key]=newCard(key);
