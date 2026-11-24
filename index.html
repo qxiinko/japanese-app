@@ -4,9 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
-<link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#3f5e8c">
-<link rel="icon" type="image/png" href="favicon.png">
 <title>Японский: путь к аниме</title>
 <style>
 /* Японский: путь к аниме — стили. Палитра: тёплая бумага + индиго (藍) + киноварь (朱) в качестве акцента-печати. */
@@ -163,6 +160,40 @@ input.type-in{width:100%;font-size:1.2rem;padding:12px 14px;border:2px solid var
 #cue-list .course-item{align-items:flex-start}
 .token-miss{opacity:.55;border-style:dashed;cursor:pointer}
 #anki-preview select{max-width:340px;background:var(--card);color:var(--ink);border:2px solid var(--line);border-radius:8px;padding:8px}
+
+/* ---------- Палитры акцента (Настройки → Акцент) ---------- */
+html[data-accent="sakura"]{--accent:#c2527d;--accent-ink:#fff;--seal:#8f5fa8;--chip:#f7ecf2}
+html[data-accent="matcha"]{--accent:#4e7d4e;--accent-ink:#fff;--seal:#b2593a;--chip:#edf3ec}
+html[data-accent="sumi"]{--accent:#4a4a55;--accent-ink:#fff;--seal:#c94f39;--chip:#ece9e4}
+html[data-accent="ai"]{--accent:#7d5fc2;--accent-ink:#fff;--seal:#d96a52;--chip:#f0ecf7}
+html[data-theme="dark"][data-accent="sakura"]{--accent:#e08cb0;--accent-ink:#241018;--chip:#2c2229}
+html[data-theme="dark"][data-accent="matcha"]{--accent:#8fbf8f;--accent-ink:#12200f;--chip:#222b22}
+html[data-theme="dark"][data-accent="sumi"]{--accent:#b8b8c4;--accent-ink:#17171d;--chip:#26262e}
+html[data-theme="dark"][data-accent="ai"]{--accent:#b39ddb;--accent-ink:#1d1430;--chip:#272235}
+
+/* ---------- Разная вёрстка: ПК (≥1024px) ---------- */
+@media (min-width:900px){
+  #app{max-width:1080px;padding:0 32px 60px 210px;position:relative}
+  nav.tabs{position:fixed;left:0;top:0;bottom:0;width:178px;flex-direction:column;justify-content:flex-start;
+    gap:2px;background:var(--card);border-right:2px solid var(--line);border-bottom:none;
+    margin:0;padding:76px 10px 20px;z-index:40;overflow:visible}
+  nav.tabs button{text-align:left;border-bottom:none;border-left:3px solid transparent;border-radius:0 8px 8px 0;margin:0;padding:12px 14px}
+  nav.tabs button[aria-current="page"]{border-left-color:var(--accent);border-bottom-color:transparent;background:color-mix(in srgb,var(--accent) 10%,transparent)}
+  .top{position:fixed;left:0;right:0;top:0;z-index:45;background:var(--bg);margin:0;
+    padding:12px 32px 12px 210px;border-bottom:1px solid var(--line)}
+  .stat-chips{display:grid;grid-template-columns:repeat(4,1fr)}
+  .course-list{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .course-item{margin:0}
+  .lesson-step{max-width:none}
+  table.examples td.jp-cell{white-space:normal;min-width:220px}
+  .srs-card .q-jp{font-size:2.8rem}
+  .hero{align-items:center}
+  .hero .big-day{font-size:2.6rem}
+  #toast{bottom:32px}
+}
+@media (max-width:1023px){
+  .course-list{display:block}
+}
 
 </style>
 </head>
@@ -589,7 +620,7 @@ function lsSet(key,val){ try{ localStorage.setItem(key,JSON.stringify(val)); }ca
 function defaultState(){
   return {
     v:STATE_VERSION,
-    settings:{theme:'light',furigana:'always',newLimit:7,voiceURI:'',rate:0.9,romaji:false},
+    settings:{theme:'light',furigana:'always',newLimit:7,voiceURI:'',rate:0.9,romaji:false,accent:'indigo'},
     diag:{done:false,hira:0,kata:0,weak:[]},
     lessons:{},          // id -> {status:'done'|'started', score, at}
     exams:{},            // id -> {status:'done'|'attempted', score, at, attempts}
@@ -627,6 +658,7 @@ async function loadState(){
     STATE=Object.assign(defaultState(),loaded,{v:STATE_VERSION});
     if(!STATE.exams)STATE.exams={};
     if(!STATE.kanjiCards)STATE.kanjiCards={};
+    if(!STATE.settings.accent)STATE.settings.accent='indigo';
   }
   return STATE;
 }
@@ -2140,6 +2172,7 @@ function speak(text){
 /* ---------- Применение настроек ---------- */
 function applySettings(){
   document.documentElement.setAttribute('data-theme',STATE.settings.theme);
+  document.documentElement.setAttribute('data-accent',STATE.settings.accent||'indigo');
   document.documentElement.setAttribute('data-furigana',STATE.settings.furigana);
 }
 
@@ -2294,6 +2327,7 @@ function bindToday(){
 /* ---------- Курс ---------- */
 function renderCourse(){
   let html='<div class="card"><h2>Карта курса</h2><p class="muted">Этапы A→B→C: восстановление письменности и начальная грамматика. Дальнейшие уроки добавляются как учебные пакеты (контент v'+CONTENT_VERSION+'). Соответствие уровням JLPT — приблизительное; это не официальный курс JLPT.</p></div>';
+  html+='<div class="course-list">';
   html+=`<div class="course-item ${STATE.diag.done?'done':'active'}" data-go="${STATE.diag.done?'':'diag'}" data-action="diag">
     <div class="num">${STATE.diag.done?'✓':'!'}</div>
     <div class="meta"><b>Диагностика каны</b><span class="muted">${STATE.diag.done?'Пройдена':'Хирагана, катакана, похожие знаки'}</span></div></div>`;
@@ -2318,6 +2352,7 @@ function renderCourse(){
         <span class="locked-note">${est==='done'?'Сдана':eun?'Доступна':'Откроется после уроков модуля'}</span></div></div>`;
     }
   });
+  html+='</div>';
   html+=`<div class="card locked-note">Этапы 2–3: уроки 1–23 (12 сцен-диалогов), контрольные, лаборатория субтитров, импорт Anki, колода кандзи. Далее: PWA, облако.</div>`;
   $app.innerHTML=shell(html,'course');
   bindCourse();
@@ -2972,6 +3007,14 @@ function renderSettings(){
   const html=`<div class="card">
    <div class="field"><label>Тема</label>
     <select id="set-theme"><option value="light" ${s.theme==='light'?'selected':''}>Светлая</option><option value="dark" ${s.theme==='dark'?'selected':''}>Тёмная</option></select></div>
+   <div class="field"><label>Акцентный цвет</label>
+    <select id="set-accent">
+     <option value="indigo" ${(s.accent||'indigo')==='indigo'?'selected':''}>Индиго (как сейчас)</option>
+     <option value="sakura" ${s.accent==='sakura'?'selected':''}>Сакура — розовый</option>
+     <option value="matcha" ${s.accent==='matcha'?'selected':''}>Матча — зелёный</option>
+     <option value="sumi" ${s.accent==='sumi'?'selected':''}>Суми — графитовый</option>
+     <option value="ai" ${s.accent==='ai'?'selected':''}>Аи — фиолетовый</option>
+    </select></div>
    <div class="field"><label>Фуригана</label>
     <select id="set-furi">
      <option value="always" ${s.furigana==='always'?'selected':''}>Всегда показывать</option>
@@ -3014,6 +3057,7 @@ function renderSettings(){
   $app.innerHTML=shell(html,'settings');
   initVoices();
   document.getElementById('set-theme').onchange=e=>{STATE.settings.theme=e.target.value;queueSave();applySettings();};
+  document.getElementById('set-accent').onchange=e=>{STATE.settings.accent=e.target.value;queueSave();applySettings();};
   document.getElementById('set-furi').onchange=e=>{STATE.settings.furigana=e.target.value;queueSave();applySettings();};
   document.getElementById('set-newlimit').oninput=e=>{STATE.settings.newLimit=+e.target.value;document.getElementById('nl-val').textContent=e.target.value;queueSave();};
   document.getElementById('set-rate').oninput=e=>{STATE.settings.rate=+e.target.value;document.getElementById('rate-val').textContent=e.target.value;queueSave();};
@@ -3122,11 +3166,6 @@ const KANA_READINGS={'ぬ':'ну','き':'ки','ろ':'ро','ほ':'хо','わ':'
   render();
 })();
 
-</script>
-<script>
-if('serviceWorker' in navigator&&location.protocol==='https:'){
-  window.addEventListener('load',()=>{navigator.serviceWorker.register('./sw.js').catch(()=>{});});
-}
 </script>
 </body>
 </html>
