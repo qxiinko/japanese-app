@@ -644,7 +644,7 @@ let _saveTimer=null;
 function queueSave(){
   STATE.meta.updatedAt=Date.now();
   if(_saveTimer) return;
-  _saveTimer=setTimeout(()=>{ _saveTimer=null; persistState(); },400);
+  _saveTimer=setTimeout(()=>{ _saveTimer=null; persistState().then(()=>{ if(typeof scheduleAutoSync==='function')scheduleAutoSync(); }); },400);
 }
 async function persistState(){
   try{ await idbSet('state',STATE); }catch(e){ lsSet('jp_path_state',STATE); }
@@ -3039,7 +3039,8 @@ function cloudStrip(){const c=JSON.parse(JSON.stringify(STATE));if(c.settings){d
 async function cloudApi(path,opts){
   const cfg=cloudCfg();if(!cfg)throw new Error('Облако не настроено');
   const h=Object.assign({'apikey':cfg.key,'Content-Type':'application/json'},opts&&opts.headers||{});
-  const r=await fetch(cfg.url+path,Object.assign({},opts,{headers:h}));
+  const base=(String(cfg.url).match(/^https:\/\/[^\/]+/i)||[cfg.url])[0];
+  const r=await fetch(base+path,Object.assign({},opts,{headers:h}));
   const j=await r.json().catch(()=>({}));
   if(!r.ok)throw new Error(j.msg||j.error_description||j.message||('HTTP '+r.status));
   return j;
@@ -3052,6 +3053,24 @@ async function cloudEnsureToken(){
   STATE.settings.cloudSession={access_token:j.access_token,refresh_token:j.refresh_token,uid:j.user.id,email:j.user.email,expires_at:Math.floor(Date.now()/1000)+j.expires_in};
   queueSave();return STATE.settings.cloudSession;
 }
+
+/* Автосинхронизация: через 20 сек после изменений заливаем прогресс молча */
+let _autoT=null,_lastAuto=0;
+function scheduleAutoSync(){
+  const ss=cloudSess();if(!ss||!STATE.settings.cloudAuto)return;
+  if(Date.now()-_lastAuto<15000)return;
+  clearTimeout(_autoT);
+  _autoT=setTimeout(async()=>{
+    try{
+      const tk=await cloudEnsureToken();if(!tk)return;
+      await cloudApi('/rest/v1/progress?on_conflict=id',{method:'POST',headers:{'Authorization':'Bearer '+tk.access_token,'Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify([{id:tk.uid,data:cloudStrip()}])});
+      _lastAuto=Date.now();
+      STATE.settings.cloudLastSync=new Date().toISOString();
+      await persistState();
+    }catch(e){/* молча: офлайн — зальём при следующем действии */}
+  },20000);
+}
+
 function cloudBind(){
   const $=id=>document.getElementById(id);
   const on=(id,fn)=>{const el=$(id);if(el)el.onclick=fn;};
@@ -3079,6 +3098,9 @@ function cloudBind(){
     }catch(e){toast('Ошибка: '+e.message);}
   });
   on('cloud-logout',()=>{delete STATE.settings.cloudSession;queueSave();toast('Вышли из облака');renderSettings();});
+  on('cloud-edit',()=>{delete STATE.settings.cloud;queueSave();renderSettings();});
+  const cauto=$('cloud-auto');
+  if(cauto)cauto.onchange=()=>{STATE.settings.cloudAuto=cauto.checked;queueSave();toast(cauto.checked?'Автосинхронизация включена':'Автосинхронизация выключена');};
   on('cloud-up',async()=>{
     try{
       const ss=await cloudEnsureToken();if(!ss)return;
@@ -3144,7 +3166,9 @@ function renderSettings(){
    ${cloudCfg()&&cloudSess()
      ?`<div class="row" style="margin-top:10px"><button class="btn" id="cloud-up">Залить прогресс в облако</button>
        <button class="btn ghost" id="cloud-down">Загрузить из облака</button>
-       <button class="btn small ghost" id="cloud-logout">Выйти</button></div>`
+       <button class="btn small ghost" id="cloud-logout">Выйти</button></div>
+       <label style="display:block;margin-top:10px"><input type="checkbox" id="cloud-auto" ${s.cloudAuto?'checked':''}> Автоматически сохранять прогресс в облако (≈20 сек после изменений)</label>
+       <p class="muted">Изменить проект: <button class="btn small ghost" id="cloud-edit">указать другой URL/ключ</button></p>`
      :cloudCfg()
      ?`<div class="field" style="margin-top:10px"><label>E-mail</label><input id="cloud-email" type="email" autocomplete="username"></div>
        <div class="field"><label>Пароль (мин. 6 символов)</label><input id="cloud-pass" type="password" autocomplete="current-password"></div>
