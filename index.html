@@ -2313,8 +2313,10 @@ function renderToday(){
      <ul class="plan-list">${planBlocks(mode).map(b=>`<li><span class="min">${b.min}</span><span>${b.t}</span></li>`).join('')}</ul>
      <p class="muted">Это ориентир, а не таймер: можно закончить в любой момент, «долгов» и штрафов за пропуск нет.</p></div>`;
   }
+  const cSess=cloudSess();
   html+=`<div class="card"><h3>Облачная синхронизация</h3>
-   <p class="muted">Сейчас прогресс хранится <b>только локально</b> в этом браузере. Облачная синхронизация ещё не подключена и появится позже. Перенос между устройствами — через <b>Настройки → Экспорт/Импорт</b> (это резервная копия, а не автоматическая синхронизация).</p></div>`;
+   ${cSess?`<p class="muted">Подключена. Аккаунт: <b>${esc(cSess.email||'')}</b>${STATE.settings.cloudAuto?' · автосохранение включено':''}${STATE.settings.cloudLastSync?' · последняя: '+new Date(STATE.settings.cloudLastSync).toLocaleString('ru-RU'):' · ещё не синхронизировалось'}.</p>`
+          :`<p class="muted">Облако настроено, войдите в <b>Настройки → Облако</b> (e-mail + пароль, регистрация там же). До входа прогресс хранится только в этом браузере.</p>`}</div>`;
   $app.innerHTML=shell(html,'today');
   bindToday();
 }
@@ -2878,10 +2880,16 @@ function dueKanji(){
 function renderReviewHome(){
   const due=dueCards().length,newN=Math.min(newCandidates().length,STATE.settings.newLimit);
   const dueK=dueKanji().length,kanjiTotal=Object.keys(kanjiDeck()).length;
+  const wordsTotal=Object.keys(STATE.cards).length;
+  const wordsLearned=Object.values(STATE.cards).filter(c=>(c.ivl||0)>=21).length;
+  const kanjiStudied=Object.keys(STATE.kanjiCards||{}).length;
+  const kanjiLearned=Object.values(STATE.kanjiCards||{}).filter(c=>(c.ivl||0)>=21).length;
   const html=`<div class="card"><h2>Повторения</h2>
    <p class="muted">Планировщик: адаптированный SM-2 (${SCHED_VERSION}). Интервалы растут при успешных повторениях, ошибка возвращает карточку без штрафа.</p>
    <p>Слова — к повторению: <b>${due}</b> · Новых: <b>${newN}</b> (лимит ${STATE.settings.newLimit}/день)</p>
-   <p>Кандзи — к повторению: <b>${dueK}</b> из ${kanjiTotal} знаков, найденных в словах уроков</p>
+   <p class="muted">Всего слов в изучении: <b>${wordsTotal}</b> · закреплено (интервал ≥ 21 дн.): <b>${wordsLearned}</b></p>
+   <p>Кандзи — к повторению: <b>${dueK}</b> · всего знаков в курсе: <b>${kanjiTotal}</b></p>
+   <p class="muted">В изучении (открывались): <b>${kanjiStudied}</b> · закреплено: <b>${kanjiLearned}</b> — знаки извлекаются из слов уроков, карточка появляется при первом повторении/ошибке.</p>
    ${due+newN>0?`<button class="btn big" id="go-review">Повторять слова</button>`:'<p class="muted">Слова: пока ничего не подошло по срокам.</p>'}
    ${dueK>0?`<button class="btn big ghost" id="go-review-k" style="margin-top:8px">Повторять кандзи (${dueK})</button>`:`<p class="muted">Кандзи: подходят по срокам позже. Карточка кандзи — знак и слова с ним; чтение именно в этих словах.</p>`}
    <p class="muted">Оценки: «не помню» возвращает карточку в тот же сеанс, «легко» сильно увеличивает интервал.</p></div>`;
@@ -3162,7 +3170,7 @@ function renderSettings(){
        <p class="muted">Один аккаунт = один прогресс. На новом устройстве войдите тем же e-mail и нажмите «Загрузить из облака».</p>`}
   </div>
   <div class="card"><h3>Импорт из Anki (текстовый экспорт)</h3>
-   <p class="muted">В Anki: выберите колоду → Файл → Экспорт → формат «Простой текст, поля через табуляцию». Файл .apkg не поддерживается. Существующие значения не перезаписываются: дубликаты показываются и пропускаются с вашего подтверждения.</p>
+   <details><summary class="muted">Как это работает</summary><p class="muted">В Anki: выберите колоду → Файл → Экспорт → формат «Простой текст, поля через табуляцию» → получите .txt. В каждой строке: слово (яп.) и перевод через табуляцию — они станут карточками «слово → перевод» в общей колоде слов, с направлением чтения «узнавание». Файл .apkg (готовые колоды с медиа) не поддерживается — только текстовый экспорт. Перед добавлением показывается предпросмотр; существующие значения не перезаписываются: дубликаты показываются и пропускаются с вашего подтверждения.</p></details>
    <label class="btn ghost" style="display:inline-block">Выбрать файл экспорта (.txt)<input type="file" id="anki-file" accept=".txt,.csv,text/plain,text/tab-separated-values" style="display:none"></label>
    <div id="anki-preview"></div>
   </div>
@@ -3178,7 +3186,7 @@ function renderSettings(){
    ${STATE.reports.length?STATE.reports.map(r=>`<p class="muted">• [${new Date(r.at).toLocaleString('ru-RU')}] ${esc(r.exId)}: ${esc(r.text)}</p>`).join(''):'<p class="muted">Пока нет.</p>'}
   </div>
   <div class="card"><h3>О данных</h3>
-   <p class="muted">Схема данных: v${STATE_VERSION} · планировщик: ${SCHED_VERSION} · контент: v${CONTENT_VERSION}. Облачной синхронизации нет — приложение работает полностью локально.</p>
+   <p class="muted">Схема данных: v${STATE_VERSION} · планировщик: ${SCHED_VERSION} · контент: v${CONTENT_VERSION}. Облако: Supabase (учётная запись — в блоке «Облако» выше).</p>
    <button class="btn danger small" id="btn-reset">Сбросить весь прогресс</button></div>`;
   $app.innerHTML=shell(html,'settings');
   initVoices();
